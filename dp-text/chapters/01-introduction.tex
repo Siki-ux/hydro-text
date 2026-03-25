@@ -1,0 +1,50 @@
+\chapter*{Introduction}
+\markright{\textsc{Introduction}}
+\addcontentsline{toc}{chapter}{Introduction}
+\label{chap:intro}
+
+Environmental monitoring of river systems and catchment areas generates continuous streams of heterogeneous sensor data from
+devices produced by different manufacturers, communicating over different protocols, and structured according to different
+data models. Managing this diversity at scale --- from data acquisition in the field through ingestion, quality control,
+storage, and visualisation --- is a non-trivial engineering problem, particularly for research institutions that operate
+many sensors across geographically distributed sites.
+
+Czech University of Life Sciences Prague (CZU) is one such institution. Its sensor infrastructure spans river gauging
+stations, catchment monitoring networks, and experimental plots, with instruments recording water level, conductivity,
+temperature, turbidity, and other environmental parameters. Prior to this work, no unified platform existed to manage
+this infrastructure in a coherent, standards-compliant way.
+
+The UFZ Time.IO solution, developed at the Helmholtz Centre for Environmental Research in Leipzig, was identified as a
+candidate foundation. Rather than building a full environmental data management system from scratch, this thesis
+investigates whether Time.IO can be adapted to meet the operational requirements of a real institutional deployment,
+and implements the extensions needed to close the gap between the upstream system and those requirements.
+
+The platform must also be positioned within the broader context of the European eLTER (Long-Term Ecosystem Research)
+infrastructure, which was actively evaluating Time.IO as a candidate for standardised data acquisition across its
+network of research sites at the time this work was assigned. The CZU deployment therefore serves a dual purpose:
+it addresses a concrete operational need at CZU, and it provides evidence for or against the suitability of the
+adapted platform for wider eLTER adoption.
+
+\medskip\noindent
+The goals of this thesis are:
+\begin{enumerate}
+  \item To analyse the capabilities and limitations of the UFZ Time.IO system with respect to the CZU and eLTER
+        deployment requirements.
+  \item To design and implement the \texttt{water-dp} application layer providing project-oriented sensor management,
+        MQTT-driven alert evaluation, geospatial integration, and a multilingual user portal.
+  \item To implement the \texttt{hydro-deploy} unified deployment orchestrator enabling single-command installation
+        of the complete integrated stack.
+  \item To evaluate the resulting platform against the identified requirements and reflect on its suitability for
+        broader adoption within the eLTER infrastructure.
+\end{enumerate}
+
+\medskip\noindent
+The thesis is structured as follows.
+Chapter~\ref{chap:background} provides background on environmental sensor data management, the OGC SensorThings API
+standard, the UFZ Time.IO solution, and the eLTER infrastructure.
+Chapter~\ref{chap:requirements} derives the requirements from the CZU use cases and performs a gap analysis
+against the baseline Time.IO system.
+Chapter~\ref{chap:architecture} presents the architecture of the resulting platform.
+Chapter~\ref{chap:implementation} describes the implementation of all three platform components.
+Chapter~\ref{chap:testing} evaluates the platform against the requirements and discusses performance and deployment.
+Chapter~\ref{chap:conclusion} summarises the contributions, reflects on limitations, and outlines future work.

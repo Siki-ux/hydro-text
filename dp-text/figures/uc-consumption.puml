@@ -1,0 +1,22 @@
+@startuml uc-consumption
+left to right direction
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontSize 12
+
+actor Researcher as researcher
+actor "External\nSTA Client" as extclient
+
+rectangle "Data Consumption" {
+  usecase "UC-12: Visualise\ntime series" as UC12
+  usecase "UC-13: View\ngeospatial map" as UC13
+  usecase "UC-14: Export\ndata as CSV" as UC14
+  usecase "UC-15: Query\nSTA endpoint" as UC15
+}
+
+researcher -- UC12
+researcher -- UC13
+researcher -- UC14
+extclient -- UC15
+@enduml

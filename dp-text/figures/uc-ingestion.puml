@@ -1,0 +1,26 @@
+@startuml uc-ingestion
+left to right direction
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontSize 12
+
+actor Researcher as researcher
+actor "MQTT\nDevice" as device
+actor "SFTP\nServer" as sftp
+actor "External\nAPI" as extapi
+
+rectangle "Data Ingestion" {
+  usecase "UC-1: Upload\nCSV data file" as UC1
+  usecase "UC-2: Stream\nMQTT data" as UC2
+  usecase "UC-3: Sync\nSFTP files" as UC3
+  usecase "UC-4: Sync\nexternal API" as UC4
+  usecase "UC-5: Bulk import\nsensor CSV" as UC5
+}
+
+researcher -- UC1
+researcher -- UC5
+device -- UC2
+sftp -- UC3
+extapi -- UC4
+@enduml

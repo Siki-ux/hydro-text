@@ -1,0 +1,429 @@
+\chapter{Background and Related Work}
+\label{chap:background}
+
+This chapter surveys the domain knowledge and prior work that this thesis builds upon.
+Section~\ref{sec:bg-sensor-data} reviews environmental sensor data management and identifies the key challenges.
+Section~\ref{sec:bg-sta} introduces the OGC SensorThings API standard and its open-source FROST-Server implementation.
+Section~\ref{sec:bg-timeio} analyses the UFZ Time.IO solution that serves as the starting point for this work.
+Section~\ref{sec:bg-elter-context} explains the institutional and organisational context in which Time.IO was selected.
+Section~\ref{sec:bg-elter} describes the eLTER research infrastructure and its data integration requirements.
+
+%% ================================================================
+\section{Environmental Sensor Data Management}
+\label{sec:bg-sensor-data}
+%% ================================================================
+
+Environmental monitoring deployments typically consist of sensors connected to data loggers or gateways
+that transmit observations to a central infrastructure. A representative architecture contains four layers:
+edge devices that sample physical quantities, an ingestion layer that receives data over one or more
+protocols, a storage layer optimised for time-series workloads, and an access layer that exposes the
+data through standardised interfaces \parencite{hart2006environmental}.
+
+The heterogeneity of these systems poses a significant engineering challenge. A single monitoring network
+may combine sensors from different manufacturers --- each using a proprietary payload format --- delivered
+over MQTT, HTTP~POST, SFTP file upload, or manual CSV import. Temporal resolutions range from
+sub-second sampling on vibrating-wire piezometers to daily aggregates from weather stations.
+Reconciling these differences into a unified data model is a prerequisite for any cross-site analysis
+\parencite{horsburgh2008observations}.
+
+Several platforms address parts of this problem space. The Observations Data Model~2 (ODM2)
+\parencite{horsburgh2016odm2} provides a relational schema for managing diverse observational data with
+rich provenance metadata. ERDDAP \parencite{simons2023erddap} focuses on data distribution, enabling
+scientists to access gridded and tabular datasets through uniform query interfaces. The OGC Sensor
+Observation Service (SOS) \parencite{ogcsos} defines a standard web-service interface for querying sensor
+data, but its XML-based protocol has been largely superseded by the RESTful SensorThings~API discussed
+in Section~\ref{sec:bg-sta}.
+
+The common thread across these solutions is the recognition that interoperability standards are
+essential for cross-institutional data sharing. Without a shared data model and access protocol,
+each integration becomes a bespoke point-to-point effort. This thesis addresses the challenge in the
+context of the Czech University of Life Sciences Prague (CZU) deployment, where sensors from multiple
+manufacturers must be unified under a single platform accessible to several research groups.
+
+%% ================================================================
+\section{OGC SensorThings API and the FROST Server}
+\label{sec:bg-sta}
+%% ================================================================
+
+The OGC SensorThings API (STA) \parencite{ogc-sta} is an open standard that defines a RESTful interface
+for managing and accessing Internet of Things sensor data. Ratified by the Open Geospatial Consortium in 2016,
+it was designed to be lightweight, JSON-based, and suitable for resource-constrained IoT environments ---
+in contrast to the earlier XML-heavy Sensor Observation Service.
+
+\subsection{Data Model}
+\label{sec:bg-sta-model}
+
+The STA data model is built around six core entity types and their relationships:
+
+\begin{itemize}
+  \item \textbf{Thing} --- a physical object of interest, such as a weather station or a water gauge.
+        A Thing has a \emph{Location} representing its geospatial position.
+  \item \textbf{Datastream} --- a logical grouping of Observations measuring a single
+        \emph{ObservedProperty} (e.g.\ water level, air temperature) with a specific \emph{Sensor}.
+        Each Datastream belongs to exactly one Thing.
+  \item \textbf{Observation} --- an individual measurement event, characterised by a
+        \texttt{phenomenonTime} (when the phenomenon occurred), a \texttt{resultTime} (when the
+        result was produced), and a \texttt{result} value.
+  \item \textbf{Sensor} --- the instrument or procedure that produces Observations.
+  \item \textbf{ObservedProperty} --- the physical quantity being measured (e.g.\
+        ``Water Temperature'').
+  \item \textbf{FeatureOfInterest} --- the real-world feature to which an Observation applies,
+        typically derived from the Thing's Location.
+\end{itemize}
+
+The standard supports navigation between entities through URL-based association links. For example,
+\texttt{/Things(1)/Datastreams} returns all Datastreams belonging to Thing~1, and
+\texttt{/Datastreams(5)/Observations?\$filter=phenomenonTime gt 2024-01-01T00:00:00Z}
+returns filtered Observations. This query model enables clients to traverse the entity graph
+without prior knowledge of the underlying database schema.
+
+STA also defines an MQTT extension (Part~2 of the standard) that allows clients to subscribe to
+entity changes in real time, making it suitable for both historical queries and live data streams.
+
+\subsection{FROST-Server}
+\label{sec:bg-frost}
+
+FROST-Server \parencite{frost-server} is an open-source Java implementation of the OGC SensorThings API
+developed by the Fraunhofer Institute for Optronics, System Technologies and Image Exploitation (IOSB).
+It is the most widely adopted STA server implementation and serves as the reference for conformance testing.
+
+FROST-Server is deployed as a Java web application on Apache Tomcat and uses PostgreSQL with the
+PostGIS extension as its backing store. Each deployment is configured through a Tomcat context file
+that specifies the JDBC connection parameters, API version, and plugin settings. The server supports:
+
+\begin{itemize}
+  \item Full STA Part~1 (Sensing) compliance, including \texttt{\$filter}, \texttt{\$expand},
+        \texttt{\$select}, \texttt{\$orderby}, and \texttt{\$top}/\texttt{\$skip} query options.
+  \item The MultiDatastream extension for sensors that produce multiple observed properties
+        in a single observation.
+  \item Automatic generation of OpenAPI documentation.
+  \item Connection pooling with configurable pool sizes (the deployment described in this thesis
+        uses a maximum of 20 connections per context).
+\end{itemize}
+
+A key architectural property of FROST-Server is that it reads its entity data from PostgreSQL views
+rather than requiring a specific physical table layout. This allows operators to map an existing
+database schema to the STA entity model by defining appropriate SQL views --- a capability that
+the Time.IO platform exploits through its local STA views, as described in
+Section~\ref{sec:bg-timeio-arch}.
+
+%% ================================================================
+\section{The UFZ Time.IO Solution}
+\label{sec:bg-timeio}
+%% ================================================================
+
+Time.IO (internally referred to as \emph{tsm-orchestration} or TSM) is an open-source environmental
+sensor data management platform developed at the Helmholtz Centre for Environmental Research (UFZ)
+in Leipzig \parencite{bumberger2025timeio,timeio-ref}. It provides an end-to-end pipeline for ingesting, storing,
+quality-controlling, and serving environmental time-series data. The platform served as the starting
+point for the work described in this thesis.
+
+\subsection{The UFZ TSM Ecosystem}
+\label{sec:bg-timeio-ecosystem}
+
+The UFZ TSM project is not a single repository but a broader ecosystem of over a dozen
+components hosted under the \texttt{ufz-tsm} group on the Helmholtz Codebase. Beyond the
+core \texttt{tsm-orchestration} ingestion pipeline adopted in this thesis, the ecosystem
+includes two frontend projects (\texttt{tsm-frontend}, a Django application with 465~commits,
+and \texttt{thing-management}, a newer FastAPI/Vue.js replacement started in September~2024),
+a combined deployment repository (\texttt{timeio-and-sms}), the external Sensor Management
+System (SMS) discussed in Section~\ref{sec:bg-timeio-limitations}, Kubernetes Helm charts,
+developer utilities, and several supporting libraries.
+
+This thesis adopts only \texttt{tsm-orchestration} as its foundation. The upstream frontend
+components were replaced by the \texttt{water-dp} portal (Chapter~\ref{chap:implementation})
+because both upstream frontends produced invalid MQTT configuration messages that broke the
+ingestion pipeline, and neither provided the project-oriented management model required by CZU.
+
+\subsection{Architecture Overview}
+\label{sec:bg-timeio-arch}
+
+Time.IO is deployed as a set of Docker containers orchestrated by Docker Compose. The infrastructure
+layer comprises the following core services:
+
+\begin{itemize}
+  \item \textbf{PostgreSQL with TimescaleDB} --- the central database, storing both the configuration
+        database (\texttt{config\_db} schema) and per-thing observation data in isolated schemas.
+  \item \textbf{Mosquitto MQTT broker} --- the event backbone connecting all workers and external
+        sensor data sources. Supports both plain (port~1883) and TLS-encrypted (port~8883)
+        connections.
+  \item \textbf{MinIO object storage} --- an S3-compatible store used for file-based data ingestion.
+        Each Thing receives its own bucket for raw data files.
+  \item \textbf{FROST-Server} --- an OGC SensorThings API endpoint deployed on Apache Tomcat,
+        providing standardised read access to observation data through SQL views over per-thing
+        schemas.
+  \item \textbf{Keycloak} --- an OpenID Connect identity provider managing user authentication
+        and role-based access control.
+  \item \textbf{Grafana} --- a visualisation layer with pre-configured dashboards for time-series
+        exploration.
+  \item \textbf{Flyway} --- a database migration tool that applies versioned SQL scripts to
+        initialise and evolve the database schema.
+\end{itemize}
+
+On top of these infrastructure services, Time.IO deploys a set of specialised workers and a
+configuration API. The workers follow a message-driven architecture: each subscribes to one or more
+MQTT topics, performs its designated processing, and optionally publishes results to downstream
+topics. This design decouples the components and allows independent scaling and deployment
+of each worker.
+
+The configuration database (\texttt{config\_db} schema) stores the metadata that drives the entire
+pipeline. Key tables include \texttt{thing} (sensor device definitions), \texttt{project} (logical
+groupings of Things), \texttt{database} (connection credentials per project), \texttt{s3\_store}
+(MinIO bucket configuration), \texttt{file\_parser} and \texttt{file\_parser\_type} (parser
+definitions), \texttt{mqtt} and \texttt{mqtt\_device\_type} (MQTT ingestion settings), and
+\texttt{ext\_api} and \texttt{ext\_sftp} (external data source configurations).
+
+A central design decision is the \emph{per-thing schema} pattern: when a new Thing is provisioned,
+the platform creates a dedicated PostgreSQL schema containing its own \texttt{observation} and
+\texttt{datastream} tables. The observation table is converted to a TimescaleDB hypertable, enabling
+automatic time-based partitioning and compression. This isolation guarantees that one sensor's data
+volume or query load does not affect another, and it simplifies access-control policies at the database
+level. The mapping between a Thing's UUID and its schema name is stored in the
+\texttt{public.schema\_thing\_mapping} table.
+
+The upstream FROST-Server integration relies on a set of SQL views
+(\texttt{sql/sta\_views/}) that map the STA entity model to tables managed by the external
+Sensor Management System (SMS). These views query SMS-provided metadata --- device catalogues,
+contact records, deployment actions, and datastream links --- to construct the
+\texttt{THINGS}, \texttt{DATASTREAMS}, \texttt{OBSERVATIONS}, and related entities that
+FROST-Server reads. Because the SMS service was never operational
+(Section~\ref{sec:bg-timeio-limitations}), these views returned empty result sets or failed
+entirely, rendering the STA endpoint non-functional. Without a working STA layer, FROST-Server
+could not serve any observation data, effectively breaking one of the platform's core access
+interfaces.
+
+As part of this thesis, an alternative set of local SQL views
+(\texttt{sql/sta\_views\_local/}) was introduced to bypass the SMS dependency. These views
+derive FROST entities directly from the per-thing schemas and the configuration database.
+For example, the \texttt{DATASTREAMS} view extracts unit-of-measurement information from
+JSONB properties and constructs the STA-compliant JSON structure, while the
+\texttt{OBSERVATIONS} view maps local columns to STA result fields. Entity types that
+have no local equivalent --- \texttt{SENSORS}, \texttt{OBSERVED\_PROPERTIES},
+\texttt{FEATURES\_OF\_INTEREST}, and \texttt{HISTORICAL\_LOCATIONS} --- are provided as
+empty stub views so that FROST-Server starts without errors. A runtime toggle
+(\texttt{USE\_LOCAL\_STA\_VIEWS}, defaulting to \texttt{true}) selects between the local
+and SMS-based view sets during Thing provisioning. All code related to this workaround is
+marked with the label \texttt{TSM-TEMP} in the codebase.
+
+\subsection{Worker Architecture}
+\label{sec:bg-timeio-workers}
+
+All workers inherit from the \texttt{AbstractHandler} base class defined in the \texttt{timeio.mqtt}
+module. This base class manages the MQTT connection lifecycle, health-check heartbeats (published to
+\texttt{health/\{client\_id\}/ping}), and structured error handling. Each worker subscribes to its
+designated topic and implements the \texttt{on\_message} callback.
+
+The platform defines the following workers:
+
+\begin{description}
+  \item[configdb-updater] Subscribes to \texttt{frontend\_thing\_update} and
+    \texttt{qaqc\_settings\_update}. Receives Thing and quality-control configuration messages,
+    validates the content version (versions~4--7 are supported), and upserts the configuration into
+    the \texttt{config\_db} schema. Upon successful storage, it publishes a notification to a
+    downstream topic, triggering the thing-setup worker.
+
+  \item[thing-setup] Subscribes to the configdb-update notification topic. Orchestrates six
+    infrastructure provisioning actions for a newly created or modified Thing:
+    (1)~creates a PostgreSQL user, schema, and observation tables;
+    (2)~creates a MinIO bucket and access policy;
+    (3)~creates MQTT credentials;
+    (4)~provisions a Grafana dashboard and organisation;
+    (5)~writes a FROST-Server Tomcat context file with JDBC parameters; and
+    (6)~schedules periodic cron jobs. Each action is implemented as a composable handler and can
+    be invoked individually or as part of the full provisioning sequence.
+
+  \item[file-ingest] Subscribes to MinIO S3 bucket notifications
+    (\texttt{object\_storage\_notification}). When a file is uploaded to a Thing's bucket, the
+    worker retrieves the Thing from the configuration database using the bucket name, loads the
+    appropriate file parser, reads the raw file from MinIO (up to 256~MB), parses it into
+    observations, and upserts the results through the database API. It then publishes a
+    \texttt{data\_parsed} message for downstream quality control.
+
+  \item[mqtt-ingest] Subscribes to MQTT data topics (typically \texttt{mqtt\_ingest/\{username\}/\#}).
+    Extracts the MQTT username from the topic path, resolves the corresponding Thing, loads the
+    device-specific parser by type name, parses the payload into observations, and upserts them
+    to the database. Publishes \texttt{data\_parsed} upon completion.
+
+  \item[run-qaqc] Subscribes to \texttt{data\_parsed}. Loads the Thing's quality-control configuration,
+    retrieves the newly parsed observations, executes the configured QC tests using a
+    \texttt{StreamManager} engine, and stores the quality flags back to the database. Publishes
+    a \texttt{qaqc\_done} notification upon completion.
+
+  \item[sync-extapi] Subscribes to synchronisation trigger messages. Supports multiple built-in
+    API syncers for external data sources: T-Systems, Bosch, the German Environmental Agency (UBA),
+    the German Weather Service (DWD), and The Things Network (TTN).
+
+  \item[sync-extsftp] Subscribes to synchronisation trigger messages. Connects to external SFTP
+    servers using encrypted credentials (Fernet-based encryption), downloads new files, and uploads
+    them to the Thing's MinIO bucket for subsequent file-ingest processing.
+\end{description}
+
+A cron scheduler service triggers periodic execution of the sync-extapi and sync-extsftp workers
+at configured intervals, enabling automated data acquisition from external sources.
+
+\subsection{Parser Framework}
+\label{sec:bg-timeio-parsers}
+
+The data parsing subsystem uses a pluggable architecture based on an abstract base class
+(\texttt{AbcParser}) with concrete implementations registered in a parser map. The framework
+distinguishes between file parsers --- used by the file-ingest worker for uploaded CSV and JSON
+files --- and MQTT parsers --- used by the mqtt-ingest worker for real-time device payloads.
+
+File parsers include a general-purpose CSV parser (\texttt{CsvParser}), a JSON parser
+(\texttt{JsonParser}), and a Pandas-based parser (\texttt{PandasParser}) for complex
+tabular transformations. MQTT device parsers are specialised for specific hardware:
+\texttt{ChirpStackGenericParser} handles LoRaWAN payloads from the ChirpStack network server,
+\texttt{CampbellCr6Parser} processes GeoJSON-formatted data from Campbell Scientific CR6 loggers,
+\texttt{YdocMl417Parser} handles Ydoc ML-417 water quality sensors, and
+\texttt{BrightskyDwdApiParser} parses German Weather Service API responses. A
+\texttt{SineDummyParser} generates synthetic sine-wave data for testing.
+
+Each parser produces a list of \texttt{Observation} objects with fields for timestamp, value, origin,
+position (identifying the Datastream), and column header. Observations support four result types:
+boolean, number, string, and JSON.
+
+Critically, all parsers and device types in the upstream platform are hardcoded in the Python
+source code. Adding support for a new sensor model or file format requires implementing a new
+parser class, registering it in the parser map, rebuilding the Docker image, and redeploying
+the affected worker. There is no mechanism for operators or end users to define new parsers,
+MQTT device types, or file-parsing configurations at runtime through a management interface.
+The database schema also lacks extensibility: the \texttt{mqtt\_device\_type} and
+\texttt{ext\_api\_type} tables have no metadata columns, so any device-specific configuration
+must be baked into the parser source code. This rigidity is a significant limitation for
+deployments that must accommodate diverse and evolving sensor hardware.
+
+As part of this thesis, several extensions were introduced to address this limitation:
+a dynamic parser loader (\texttt{dynamic\_loader.py}) that retrieves user-provided parser
+scripts from MinIO at runtime, a \texttt{CustomApiSyncer} class for dynamically loaded
+external API synchronisation scripts, Flyway migrations adding \texttt{properties} JSON
+columns to the \texttt{mqtt\_device\_type} and \texttt{ext\_api\_type} tables
+(V2\_27, V2\_29), and a modification to the MQTT ingest worker to pass device-type
+properties to the parser at invocation time. These changes are described in
+Chapter~\ref{chap:architecture}.
+
+\subsection{Limitations and State at the Time of This Work}
+\label{sec:bg-timeio-limitations}
+
+At the time this work commenced, the Time.IO platform exhibited several limitations that directly
+motivated the contributions of this thesis. These limitations span the SMS integration, the
+upstream frontend solutions, and the overall project maturity.
+
+\paragraph{Sensor Management System.}
+The most significant limitation concerned the Sensor Management System (SMS), an external metadata
+service intended to provide controlled vocabularies, semantic annotations, and a catalogue of sensor
+descriptions. The SMS was designed to be the authoritative source of Thing metadata for FROST-Server,
+with dedicated SQL views (\texttt{sql/sta\_views/}) mapping SMS-managed entities to the STA data model.
+However, the SMS service was never operational. The synchronisation worker
+(\texttt{sync\_sms\_manager.py}) existed in the codebase, but the upstream SMS backend it depended on
+was not available. Without populated SMS tables, the STA views returned empty result sets or failed
+to execute, rendering FROST-Server unable to serve any observation data. This was not a minor feature
+gap: the STA endpoint is a core access interface of the platform, and its absence made the upstream
+TSM deployment effectively non-functional for any client expecting standards-compliant data access.
+
+The local STA views introduced by this thesis (described in
+Section~\ref{sec:bg-timeio-arch}) restored FROST-Server functionality by deriving entity data
+from the per-thing schemas and configuration database rather than from SMS. This workaround is
+marked with the label \texttt{TSM-TEMP} in the codebase and is controlled by the
+\texttt{USE\_LOCAL\_STA\_VIEWS} environment variable.
+
+The \texttt{timeio-and-sms} combined deployment repository, which was intended to demonstrate
+the integrated SMS and Time.IO workflow, proved impossible to deploy successfully. Multiple
+dependencies were outdated or no longer available, and the solution contained breaking bugs that
+prevented the services from starting. The repository's documentation was partially written in
+German and reflected an internal prototype rather than a production-ready integration. With only
+175 commits total and activity ceasing in July~2024, the combined SMS deployment did not represent
+a viable path forward.
+
+\paragraph{Upstream frontends.}
+The original \texttt{tsm-frontend} (Django) provided basic Thing management functionality but
+contained bugs that caused inconsistencies between the frontend configuration forms and the
+ingestion pipeline's expectations. When a Thing was created or modified through the Django
+interface, the resulting MQTT configuration messages did not always match the format and content
+that the downstream workers (\texttt{configdb-updater}, \texttt{thing-setup}) expected, leading
+to silent failures in infrastructure provisioning.
+
+The newer \texttt{thing-management} replacement (Vue.js~3 + FastAPI) was still in early development
+at the time of this work, with limited functionality and similar integration issues. The
+frontend's MQTT message generation contained bugs that caused several core ingestion workflows
+--- particularly file-based ingestion and external API synchronisation --- to fail. Neither
+upstream frontend provided project-based multi-tenancy, role-based access control beyond basic
+Helmholtz~AAI group membership, alerting, geospatial layer management, or internationalisation
+--- all of which were required for the CZU deployment.
+
+\paragraph{Upstream project activity.}
+Beyond the specific component issues, the upstream TSM ecosystem showed an overall pattern of
+fragmented development. The codebase was distributed across more than a dozen repositories with
+varying levels of maturity. The FETA module (\texttt{timeio/feta.py}), which provides an ORM-like
+abstraction over the configuration database, was actively maintained and central to the worker
+architecture. However, higher-level management features were either absent, buggy, or spread
+across multiple partially overlapping projects (\texttt{tsm-frontend} vs.\ \texttt{thing-management}).
+
+The platform lacked several capabilities required for the CZU deployment: project-based
+multi-tenancy with role-based access, an alert and notification system, geospatial layer management,
+a user-facing portal for sensor configuration and data exploration, and batch CSV import with
+configurable parsing. These gaps are analysed in Chapter~\ref{chap:requirements} and addressed
+by the contributions described in Chapters~\ref{chap:architecture} and~\ref{chap:implementation}.
+
+%% ================================================================
+\section{Institutional Context: eLTER and the Adoption of Time.IO}
+\label{sec:bg-elter-context}
+%% ================================================================
+
+Time.IO was not selected through an open competitive evaluation of environmental data management
+platforms. Rather, it emerged from active engagement between the European Long-Term Ecosystem Research
+(eLTER) leadership and the UFZ development team. At the time, eLTER was assessing candidate platforms
+for standardised data acquisition across its growing European network of research sites.
+
+The UFZ, as both a leading Helmholtz research centre and an active participant in eLTER working groups,
+proposed Time.IO as a candidate solution. The evaluation framing was practical: could Time.IO serve
+real operational deployments beyond UFZ's own sites, and could it satisfy the interoperability
+requirements arising from eLTER's cross-site data harmonisation goals?
+
+The Czech University of Life Sciences Prague (CZU) deployment described in this thesis serves as a
+pilot for this broader assessment. CZU operates hydrological and meteorological monitoring networks
+across several catchment areas and needed a platform that could consolidate data from heterogeneous
+sensors into a unified, standards-compliant infrastructure. The adoption of Time.IO as the foundation
+for this deployment was driven by the eLTER engagement rather than by a systematic comparison of
+alternatives. This context is relevant because it explains why the thesis builds on Time.IO despite
+its identified limitations: the strategic alignment with eLTER provides a path toward cross-institutional
+adoption that would not be available with a platform developed in isolation.
+
+%% ================================================================
+\section{eLTER Research Infrastructure}
+\label{sec:bg-elter}
+%% ================================================================
+
+The European Long-Term Ecosystem, Critical Zone and Socio-Ecological Research Infrastructure
+(eLTER~RI) \parencite{elter-ref} is a distributed research infrastructure connecting a network of
+environmental monitoring sites across Europe. Its mandate is to enable long-term, cross-site ecosystem
+research by providing shared methodologies, data standards, and access protocols.
+
+eLTER encompasses over 400 sites in more than 25 countries, ranging from forest ecosystems and
+freshwater catchments to agricultural landscapes and urban environments. The infrastructure provides
+two categories of sites: eLTER Sites, which perform long-term observations at the ecosystem level,
+and eLTER Platforms, which host intensive measurement campaigns with high spatial and temporal
+resolution.
+
+From a data integration perspective, eLTER's requirements are directly relevant to this thesis:
+
+\begin{itemize}
+  \item \textbf{Interoperability.} Data from different sites must be queryable through common standards.
+        eLTER has identified the OGC SensorThings API as a candidate standard for real-time sensor
+        data access, aligning with the STA-based architecture described in this thesis.
+  \item \textbf{Metadata harmonisation.} Each site must describe its sensors, observed properties,
+        and measurement procedures using shared vocabularies. This requirement motivated the SMS
+        component discussed in Section~\ref{sec:bg-timeio-limitations}, although its implementation
+        remains incomplete.
+  \item \textbf{Open data access.} eLTER promotes FAIR data principles (Findable, Accessible,
+        Interoperable, Reusable), requiring platforms to expose data through well-documented,
+        machine-readable interfaces.
+  \item \textbf{Site autonomy.} Individual sites retain operational independence, choosing their
+        own sensor hardware and data collection procedures. A platform serving eLTER must therefore
+        accommodate heterogeneous hardware configurations rather than mandating a single vendor.
+\end{itemize}
+
+The platform described in this thesis addresses these requirements by building on the STA standard
+for data access, supporting configurable parsers for diverse sensor hardware, and providing a
+deployment model that can be replicated across independent sites. The extent to which the platform
+meets eLTER's broader federation and metadata requirements is discussed in
+Section~\ref{sec:test-deployment-elter}.

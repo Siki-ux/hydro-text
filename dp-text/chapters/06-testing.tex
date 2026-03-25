@@ -1,0 +1,438 @@
+\chapter{Testing and Evaluation}
+\label{chap:testing}
+
+This chapter evaluates the platform against the requirements established in Chapter~\ref{chap:requirements}.
+Section~\ref{sec:test-approach} describes the testing strategy. Section~\ref{sec:test-requirements} evaluates each
+requirement. Section~\ref{sec:test-performance} discusses performance and scalability. Section~\ref{sec:test-deployment}
+documents the CZU deployment and discusses the path to eLTER adoption.
+
+%% ----------------------------------------------------------------
+\section{Testing Approach}
+\label{sec:test-approach}
+%% ----------------------------------------------------------------
+
+The platform is tested at three levels: automated unit and integration tests for the
+\texttt{water-dp} backend and frontend, automated tests inherited from the upstream
+\texttt{tsm-orchestration} codebase, and manual end-to-end verification of the full
+deployment.
+
+\subsection{Backend Test Suite}
+\label{sec:test-approach-backend}
+
+The \texttt{water-dp} backend includes a pytest-based test suite comprising 797~test
+functions across 43~test files, organised into five directories:
+\texttt{test\_api/} (endpoint-level tests), \texttt{test\_services/} (business-logic tests),
+\texttt{test\_core/} (middleware, security, and exception handling), \texttt{test\_schemas/}
+(Pydantic model validation), and \texttt{test\_tasks/} (Celery background tasks).
+
+The test fixtures are defined in \texttt{conftest.py}. A \texttt{mock\_db\_session} fixture
+provides a \texttt{MagicMock(spec=Session)} for SQLAlchemy interactions. The \texttt{client}
+fixture creates a FastAPI \texttt{TestClient} with dependency overrides that inject the mocked
+database session and an authenticated admin user, enabling endpoint tests to run without a
+real database or Keycloak instance. An autouse \texttt{disable\_seeding} fixture prevents
+the application from running database initialisation at startup.
+
+Custom pytest markers (\texttt{api}, \texttt{services}, \texttt{core}, \texttt{v1}) are
+assigned automatically based on the test file's directory, enabling selective test execution.
+The default configuration in \texttt{pytest.ini} excludes tests marked as
+\texttt{integration}, which require a live PostgreSQL instance.
+
+Coverage is measured with \texttt{pytest-cov} against the \texttt{app/} package. The
+largest test files target the most critical business logic: the TimeIO database service
+(152~tests covering schema management and observation queries), the RBAC permission resolver
+(76~tests covering role inheritance, batch resolution, and group-based authorisation),
+and the alert evaluator (69~tests covering all operators, deduplication, sensor data
+evaluation, and QA/QC rule evaluation).
+
+A Locust-based load testing suite is included in \texttt{tests/load/locustfile.py}. It
+simulates authenticated users performing weighted API operations (project listing, sensor
+queries, observation retrieval) against a running instance. The load test can be scaled
+via \texttt{docker-compose.loadtest.yml}, which supports multiple Locust worker containers.
+
+\subsection{Frontend Test Suite}
+\label{sec:test-approach-frontend}
+
+The frontend includes 96~test cases in 13~files under \texttt{frontend/\_\_tests\_\_/},
+executed with Vitest and React Testing Library against a jsdom environment. The tests cover
+the API interceptor (authentication header injection and error handling), React~Query hook
+factories (query key generation, mutation lifecycle), and selected component rendering
+(project cards). The Vitest configuration uses the \texttt{@vitejs/plugin-react} plugin
+and resolves import aliases through the same path mapping used in production.
+
+\subsection{TSM Orchestration Tests}
+\label{sec:test-approach-tsm}
+
+The upstream \texttt{tsm-orchestration} repository contains 131~test functions covering
+parser implementations (CSV, JSON), worker scripts (file ingest, crontab setup), external
+API syncers (DWD, TTN, Bosch, T-Systems, UBA), Grafana API integration, and cryptographic
+utilities. These tests were inherited with the fork and continue to pass against the
+modified codebase.
+
+\subsection{Manual End-to-End Verification}
+\label{sec:test-approach-e2e}
+
+Full-stack scenarios are verified manually against a running deployment. The primary
+verification path traces the complete Thing lifecycle: sensor creation through the portal,
+infrastructure provisioning by TSM workers (observable through container logs and database
+schema creation), data ingestion via MQTT or CSV upload, observation availability through
+the FROST-Server STA endpoint, and time-series rendering in the portal charts. The
+\texttt{make check} target in \texttt{hydro-deploy} automates the infrastructure-level
+portion of this verification by probing container health, HTTP endpoint reachability, and
+\texttt{@sync} variable consistency.
+
+%% ----------------------------------------------------------------
+\section{Evaluation Against CZU Requirements}
+\label{sec:test-requirements}
+%% ----------------------------------------------------------------
+
+Each functional and non-functional requirement from Chapter~\ref{chap:requirements} is
+evaluated below. Requirements are classified as \emph{fully met}, \emph{partially met},
+or \emph{not met}, with evidence from the test suite, source code, or deployed system.
+
+\subsection{Functional Requirements}
+\label{sec:test-requirements-functional}
+
+Table~\ref{tab:req-evaluation-fr} summarises the evaluation of functional requirements.
+
+\begin{landscape}
+{\small
+\begin{longtable}{l p{0.30\linewidth} l p{0.38\linewidth}}
+  \caption{Functional requirements evaluation.}
+  \label{tab:req-evaluation-fr} \\
+  \textbf{ID} & \textbf{Requirement} & \textbf{Status} & \textbf{Evidence} \\
+  \hline
+  \endfirsthead
+  \textbf{ID} & \textbf{Requirement} & \textbf{Status} & \textbf{Evidence} \\
+  \hline
+  \endhead
+  FR-1  & MQTT real-time ingestion with per-Thing parsers
+        & Fully met
+        & mqtt-ingest worker; parser framework with 5~device-specific parsers;
+          131~upstream tests pass. \\[3pt]
+  FR-2  & CSV file upload ingestion
+        & Fully met
+        & file-ingest worker; 13~\texttt{test\_things.py} tests cover CSV upload
+          endpoint. \\[3pt]
+  FR-3  & External SFTP synchronisation
+        & Fully met
+        & sync-extsftp worker; triggered by cron via MQTT. \\[3pt]
+  FR-4  & External REST API synchronisation
+        & Fully met
+        & sync-extapi worker; DWD, TTN, Bosch, T-Systems, UBA syncers;
+          30~upstream syncer tests. \\[3pt]
+  FR-5  & Custom parser and syncer script upload
+        & Fully met
+        & Dynamic loader fetches scripts from MinIO; AST-based validation blocks
+          dangerous operations. \\[3pt]
+  FR-6  & Sensor CRUD with parser and coordinate config
+        & Fully met
+        & 25~\texttt{test\_sms.py} tests; 31~\texttt{test\_orchestrator.py}
+          tests. \\[3pt]
+  FR-7  & Bulk sensor import from CSV template
+        & Fully met
+        & \texttt{BulkImportDialog} component; 6~\texttt{test\_bulk.py} tests
+          with validation and authorisation checks. \\[3pt]
+  FR-8  & Sensor inactivity detection and alerting
+        & Fully met
+        & \texttt{MonitoringService}; 51~\texttt{test\_monitoring\_service.py}
+          tests. \\[3pt]
+  FR-9  & Reusable MQTT device types and CSV parsers
+        & Fully met
+        & SMS catalogue endpoints; parser/device-type CRUD tested in
+          \texttt{test\_sms.py}. \\[3pt]
+  FR-10 & Project CRUD with sensor grouping
+        & Fully met
+        & 10~\texttt{test\_project\_service.py} tests;
+          6~\texttt{test\_projects.py} endpoint tests. \\[3pt]
+  FR-11 & Project member roles (owner/editor/viewer)
+        & Fully met
+        & Two-tier RBAC; 76~\texttt{test\_rbac\_service.py} tests cover role
+          inheritance and batch resolution. \\[3pt]
+  FR-12 & Per-project TimeIO schema provisioning
+        & Fully met
+        & \texttt{TimeIOOrchestrator}; 152~\texttt{test\_timeio\_db.py} tests
+          cover schema management. \\[3pt]
+  FR-13 & QA/QC test pipeline configuration
+        & Fully met
+        & QA/QC endpoints at project and SMS scope;
+          \texttt{SensorQAQCSection} frontend component. \\[3pt]
+  FR-14 & Automatic QA/QC on \texttt{data\_parsed} event
+        & Fully met
+        & run-qaqc worker subscribes to \texttt{data\_parsed} topic. \\[3pt]
+  FR-15 & On-demand QA/QC triggering via API
+        & Fully met
+        & QA/QC service publishes to \texttt{data\_parsed} to trigger
+          re-evaluation. \\[3pt]
+  FR-16 & Interactive time-series charts
+        & Fully met
+        & \texttt{TimeSeriesChart} component with Recharts; zoom via
+          \texttt{ReferenceArea} and \texttt{Brush}. \\[3pt]
+  FR-17 & Interactive map with sensor markers and WMS overlay
+        & Fully met
+        & \texttt{ProjectMap} with MapLibre~GL; GeoServer WMS layer overlay;
+          30-second auto-refresh. \\[3pt]
+  FR-19 & CSV export of Observation data
+        & Fully met
+        & Export endpoint in \texttt{things.py} router. \\[3pt]
+  FR-20 & OIDC authentication via Keycloak
+        & Fully met
+        & JWKS validation in \texttt{core/security.py}; 4~\texttt{test\_auth.py}
+          tests; 7~\texttt{test\_keycloak\_service.py} tests. \\[3pt]
+  FR-21 & Two-tier RBAC model
+        & Fully met
+        & \texttt{RBACService} with six-rule priority chain;
+          76~permission tests. \\[3pt]
+  FR-22 & Keycloak group management
+        & Partially met
+        & Group management decommissioned from portal; users manage groups
+          via the Keycloak admin console directly. \\[3pt]
+  FR-23 & Historical CSV data upload (up to 200~MB)
+        & Fully met
+        & \texttt{DataUploadModal} and \texttt{DatasetUploadModal} components;
+          files stored in per-Thing MinIO bucket. \\[3pt]
+  FR-24 & GeoJSON geospatial import (up to 200~MB)
+        & Fully met
+        & Bulk import endpoint; 6~\texttt{test\_bulk.py} tests cover streaming
+          and validation. \\[3pt]
+  FR-25 & Multilingual UI (EN, CS, SK)
+        & Fully met
+        & Zustand-persisted locale store; typed dictionary files for all three
+          languages. \\
+\end{longtable}
+}
+\end{landscape}
+
+\begin{landscape}
+\subsection{Non-Functional Requirements}
+\label{sec:test-requirements-nonfunctional}
+
+Table~\ref{tab:req-evaluation-nfr} summarises the evaluation of non-functional requirements.
+
+{\small
+\begin{longtable}{l p{0.30\linewidth} l p{0.38\linewidth}}
+  \caption{Non-functional requirements evaluation.}
+  \label{tab:req-evaluation-nfr} \\
+  \textbf{ID} & \textbf{Requirement} & \textbf{Status} & \textbf{Evidence} \\
+  \hline
+  \endfirsthead
+  \textbf{ID} & \textbf{Requirement} & \textbf{Status} & \textbf{Evidence} \\
+  \hline
+  \endhead
+  NFR-1 & Containerised deployment (Docker + Podman)
+        & Fully met
+        & \texttt{hydro-deploy} supports both runtimes; \texttt{podman\_prep.py}
+          applies seven transformations. \\[3pt]
+  NFR-2 & OGC STA compliance
+        & Partially met
+        & FROST-Server serves STA queries; local STA views provide entity data
+          but stub views for \texttt{SENSORS}, \texttt{OBS\_PROPERTIES}, and
+          \texttt{FEATURES\_OF\_INTEREST} return empty results. \\[3pt]
+  NFR-3 & OIDC standards compliance
+        & Fully met
+        & RS256 JWKS validation with one-hour TTL cache; multi-issuer support;
+          \texttt{asyncio.Lock} for concurrent refresh. \\[3pt]
+  NFR-4 & Modular extensibility
+        & Fully met
+        & Dynamic parser loading from MinIO; runtime-uploadable syncer
+          scripts. \\[3pt]
+  NFR-5 & Security (script sandboxing, rate limiting, encryption)
+        & Fully met
+        & AST-based script validation; SlowAPI rate limiting; Fernet credential
+          encryption; 10~\texttt{test\_crypto\_utils.py} tests. \\[3pt]
+  NFR-6 & Maintainability (migrations, OpenAPI docs)
+        & Fully met
+        & Four Alembic migrations for \texttt{water\_dp} schema; Flyway for
+          TSM; OpenAPI docs generated automatically by FastAPI. \\[3pt]
+  NFR-7 & eLTER interoperability alignment
+        & Partially met
+        & STA-based data access enables standard queries; per-project isolation
+          supports multi-site operation; eLTER-specific metadata schemas not
+          yet implemented. \\[3pt]
+  NFR-8 & Unified deployment via single config
+        & Fully met
+        & Single \texttt{.env} with symlinks; \texttt{make up} deploys the
+          full stack; \texttt{make check} validates health. \\
+\end{longtable}
+}
+\end{landscape}
+
+\subsection{Gap Analysis Closure}
+\label{sec:test-requirements-gaps}
+
+Table~\ref{tab:gap-closure} maps the eleven gaps identified in
+Section~\ref{sec:req-gap} to their resolution status.
+
+\begin{longtable}{l l p{0.55\textwidth}}
+  \caption{Gap analysis closure.}
+  \label{tab:gap-closure} \\
+  \textbf{Gap} & \textbf{Status} & \textbf{Resolution} \\
+  \hline
+  \endfirsthead
+  \textbf{Gap} & \textbf{Status} & \textbf{Resolution} \\
+  \hline
+  \endhead
+  G-1  & Resolved & Project model with member roles and sensor assignment
+         implemented in the \texttt{water\_dp} schema. \\[3pt]
+  G-2  & Resolved & Next.js portal with time-series charts, maps, alerts,
+         QA/QC, and sensor management. \\[3pt]
+  G-3  & Resolved & GeoServer integration with REST~API layer management and
+         MapLibre~GL WMS overlay. \\[3pt]
+  G-4  & Resolved & Nine local STA views replace the SMS-dependent views;
+         FROST-Server starts and serves valid STA responses. \\[3pt]
+  G-5  & Resolved & \texttt{water-dp} replaces the non-functional SMS with
+         sensor management endpoints and the \texttt{TimeIOOrchestrator}. \\[3pt]
+  G-6  & Resolved & Alert evaluation system with sensor threshold, QA/QC, and
+         inactivity rules; MQTT-triggered processing. \\[3pt]
+  G-7  & Resolved & \texttt{hydro-deploy} with Compose multi-file merge,
+         \texttt{@sync} validation, and Makefile interface. \\[3pt]
+  G-8  & Resolved & \texttt{podman\_prep.py} generates Podman-compatible Compose
+         files; rootless-specific UID/GID and network fixes applied. \\[3pt]
+  G-9  & Resolved & Three locale files (EN, CS, SK) with Zustand-persisted
+         language switching. \\[3pt]
+  G-11 & Resolved & \texttt{TimeIOOrchestrator} generates MQTT configuration
+         messages compatible with the ingestion pipeline. \\[3pt]
+  G-12 & Resolved & SMS catalogue endpoints for parser and device-type CRUD;
+         dynamic parser loading from MinIO. \\
+\end{longtable}
+
+All eleven gaps from the baseline analysis are resolved. Two non-functional requirements
+(NFR-2 and NFR-7) remain partially met: NFR-2 due to the stub STA entity views that
+return empty results for entities without a local equivalent, and NFR-7 due to the
+absence of eLTER-specific metadata schemas, which are planned as future work.
+
+%% ----------------------------------------------------------------
+\section{Performance and Scalability Considerations}
+\label{sec:test-performance}
+%% ----------------------------------------------------------------
+
+The platform was not subject to formal performance benchmarking as part of this thesis.
+This section discusses the architectural properties that affect performance and identifies
+known bottlenecks.
+
+\subsection{Time-Series Query Performance}
+\label{sec:test-perf-timescaledb}
+
+TimescaleDB partitions each per-thing observation table into time-based chunks. Time-range
+queries --- the dominant access pattern for chart rendering --- benefit from chunk exclusion:
+the query planner skips chunks outside the requested interval, reducing I/O to the relevant
+time window. Older chunks are compressed automatically, further reducing storage requirements
+and improving sequential scan throughput for historical queries.
+
+The per-thing schema isolation provides an additional performance benefit: queries for one
+sensor's data never scan another sensor's observation table, even when many sensors are
+onboarded. This eliminates cross-sensor interference regardless of data volume.
+
+\subsection{API Throughput}
+\label{sec:test-perf-api}
+
+The FastAPI backend uses asynchronous request handlers with \texttt{httpx}-based FROST
+client calls, enabling the API to serve multiple concurrent requests without blocking on
+FROST-Server responses. The \texttt{AsyncFrostClient} maintains a connection pool
+(100~maximum connections, 20~keep-alive) to reduce TCP handshake overhead for repeated
+FROST queries.
+
+The Locust load testing suite included in the repository enables throughput measurement
+under simulated multi-user load. The tests authenticate against Keycloak and exercise the
+primary API operations (project listing, sensor queries, observation retrieval) with
+configurable concurrency.
+
+\subsection{Known Bottleneck}
+\label{sec:test-perf-bottleneck}
+
+The primary performance bottleneck is FROST-Server. As a synchronous Java application
+running on Tomcat, FROST processes STA queries sequentially within each thread. When the
+\texttt{water-dp} API fetches sensor metadata for a project containing many Things, each
+FROST query must complete before the next is dispatched. The \texttt{AsyncThingService}
+mitigates this by issuing FROST requests concurrently via \texttt{httpx} connection pooling,
+but FROST-Server itself remains the throughput ceiling. Replacing FROST with a lighter STA
+implementation or adding a caching layer for frequently accessed metadata are potential
+future optimisations.
+
+%% ----------------------------------------------------------------
+\section{Deployment on CZU Infrastructure and eLTER Path}
+\label{sec:test-deployment}
+%% ----------------------------------------------------------------
+
+The platform was deployed on CZU infrastructure as the primary validation environment
+for this thesis. This section documents the deployment, evaluates the platform's
+readiness for adoption within the eLTER research infrastructure, and assesses the
+long-term sustainability of the TSM-TEMP workarounds.
+
+\subsection{CZU Deployment}
+\label{sec:test-deployment-czu}
+
+The deployment workflow described in Sections~\ref{sec:arch-deployment}
+and~\ref{sec:impl-deploy} was validated on CZU infrastructure. The full stack of
+16~containers was started using \texttt{make up}, with the post-deployment
+\texttt{check.sh} script confirming container health, endpoint reachability across
+all eight HTTP services, and credential consistency across the synchronised
+\texttt{.env} variable pairs.
+
+A platform audit conducted during this work identified and remediated 14~critical and
+high-severity issues across the water-dp codebase, including security header
+enforcement, CORS and debug-mode controls, and credential management. An additional
+27~issues were documented in the upstream TSM codebase, where remediation was not
+feasible without upstream cooperation. The audit assessed all ten OWASP~Top~10
+categories; accepted deferrals include the absence of a circuit-breaker pattern and
+MQTT quality-of-service limited to level~1 by the upstream broker configuration.
+
+\subsection{Path to eLTER Adoption}
+\label{sec:test-deployment-elter}
+
+Several architectural properties of the platform align with eLTER requirements
+described in Section~\ref{sec:bg-elter}. The data access layer is built on the OGC
+SensorThings API, which is a candidate standard for eLTER data exchange. Authentication
+uses Keycloak with OpenID Connect, supporting the federated identity models common in
+European research infrastructures. Project-based isolation provides the multi-tenancy
+needed for hosting data from independent research sites. The containerised deployment
+with single-file configuration enables reproducible installation across heterogeneous
+institutional environments.
+
+However, no eLTER-specific features have been implemented. The following gaps remain
+between the current platform and a production-ready eLTER deployment:
+
+\begin{itemize}
+  \item \textbf{Metadata schemas.} eLTER defines site-level metadata (DEIMS-SDR
+    identifiers, habitat classifications, geographic delineations) that have no
+    representation in the current data model. Ingesting eLTER metadata would require
+    extending the project and sensor models or introducing a dedicated metadata service.
+  \item \textbf{Cross-site federation.} The platform operates as a single-site
+    deployment. eLTER's distributed nature, spanning over 400~sites across more than
+    25~countries, requires federation mechanisms: cross-site discovery, aggregated
+    queries, and data harmonisation across independently operated instances.
+  \item \textbf{Vocabulary alignment.} eLTER uses controlled vocabularies (EnvThes)
+    for observed properties and ecosystem parameters. The current platform stores
+    observed-property metadata as free-text fields inherited from FROST, with no
+    vocabulary binding or validation.
+  \item \textbf{Provenance and FAIR compliance.} eLTER mandates FAIR data principles
+    (Findable, Accessible, Interoperable, Reusable). The platform provides
+    accessibility and interoperability through OGC STA, but lacks persistent identifiers
+    (DOIs), structured provenance records, and machine-readable licensing metadata.
+\end{itemize}
+
+These gaps are architectural in nature and cannot be addressed by configuration changes
+alone. They represent a substantial development effort that is beyond the scope of
+this thesis but constitutes a realistic path for future work, given that the
+foundational components (STA data access, OIDC authentication, containerised
+deployment) are already in place.
+
+\subsection{Sustainability of the TSM-TEMP Workarounds}
+\label{sec:test-deployment-tsmtemp}
+
+Section~\ref{sec:impl-tsm-assessment} assessed the TSM-TEMP workarounds from an
+implementation perspective. The codebase contains 19~marked locations, concentrated
+in \texttt{setup\_user\_database.py} and \texttt{sta\_views\_local/}. From a
+sustainability perspective, two observations are relevant.
+
+First, the local STA views have no operational disadvantages relative to the
+SMS-backed alternative: they query tables the platform already manages, avoid
+foreign-table lookups, and require no additional infrastructure. The migration path
+back to upstream views remains documented, but the practical benefit of reverting is
+questionable.
+
+Second, the upstream SMS service has remained non-functional throughout the duration
+of this thesis, and no public roadmap for its restoration has been communicated. This
+reinforces the conclusion stated in Section~\ref{sec:impl-tsm-assessment}: a targeted
+rewrite of the affected components --- replacing them with a clean implementation
+rather than workarounds labelled as temporary --- is the more defensible long-term
+strategy than waiting for an upstream fix with no guaranteed timeline.

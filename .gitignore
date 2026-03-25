@@ -1,0 +1,31 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.synctex(busy)
+*.toc
+*.xdv
+*.nav
+*.snm
+*.vrb
+*.idx
+*.ilg
+*.ind
+*.ist
+
+# Build output (keep if you want compiled PDFs tracked; remove these lines if so)
+*.pdf
+
+# Overleaf / editor noise
+.DS_Store
+*.swp
+*~

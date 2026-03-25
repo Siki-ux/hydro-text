@@ -1,0 +1,63 @@
+@startuml arch-overview
+!theme plain
+skinparam defaultFontSize 28
+skinparam padding 14
+skinparam nodesep 50
+skinparam ranksep 50
+skinparam rectangleBorderThickness 2
+skinparam arrowThickness 2
+skinparam linetype polyline
+
+actor "Researcher" as user
+actor "MQTT Device" as device
+
+rectangle "water-dp\n(application layer)" as wdp {
+  rectangle "Next.js Frontend" as frontend
+  rectangle "FastAPI Backend" as api
+  rectangle "Celery Worker" as celery
+  rectangle "GeoServer" as geo
+
+  frontend -[hidden]down- api
+  api -[hidden]down- celery
+  celery -[hidden]down- geo
+}
+
+rectangle "tsm-orchestration\n(infrastructure layer)" as tsm {
+  rectangle "FROST-Server" as frost
+  rectangle "Keycloak (OIDC)" as kc
+  rectangle "Grafana" as grafana
+  rectangle "Ingestion Workers" as workers
+  rectangle "Cron Scheduler" as cron
+
+  frost -[hidden]down- kc
+  kc -[hidden]down- grafana
+  grafana -[hidden]down- workers
+  workers -[hidden]down- cron
+}
+
+rectangle "Shared Data Layer" as data {
+  database "PostgreSQL + TimescaleDB" as db
+  rectangle "MinIO (S3)" as minio
+  rectangle "Mosquitto MQTT Broker" as mqtt
+
+  db -[hidden]down- minio
+  minio -[hidden]down- mqtt
+}
+
+' Layout: three columns side by side
+wdp -[hidden]right- tsm
+tsm -[hidden]right- data
+
+' Connections
+user -down-> wdp : HTTPS
+user -down-> tsm : HTTPS
+
+device -down-> data : MQTT/TLS
+
+wdp -down-> data : SQL, S3,\nMQTT publish
+tsm -down-> data : SQL, S3,\nMQTT sub/pub
+
+api -right-> frost : STA REST
+api -right-> kc : OIDC
+
+@enduml

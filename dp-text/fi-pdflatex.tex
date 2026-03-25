@@ -1,0 +1,110 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% I, the copyright holder of this work, release this work into the
+%% public domain. This applies worldwide. In some countries this may
+%% not be legally possible; if so: I grant anyone the right to use
+%% this work for any purpose, without any conditions, unless such
+%% conditions are required by law.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\documentclass[
+  digital,     %% Submit digital version. Change to `printed` for print.
+  oneside,     %% One-sided for digital submission. Change to `twoside` for print.
+  nosansbold,
+  nocolorbold,
+  lof,         %% Print List of Figures. Replace with `nolof` to hide.
+  lot,         %% Print List of Tables.  Replace with `nolot` to hide.
+]{fithesis4}
+
+%% Locale (pdfLaTeX variant — matches Overleaf compiler setting)
+\usepackage[resetfonts]{cmap}
+\usepackage[T1]{fontenc}
+\usepackage[
+  main=english,
+  english, czech, slovak
+]{babel}
+
+%% Thesis metadata
+\thesissetup{
+    date        = \the\year/\the\month/\the\day,
+    university  = mu,
+    faculty     = fi,
+    type        = mgr,
+    department  = Department of Software Engineering,
+    author      = Bc. Jakub Sikula,
+    gender      = m,
+    advisor     = {RNDr. Tomáš Rebok, Ph.D.},
+    title       = {Design and Implementation of a Platform for Real-Time Environmental Sensor Data Collection, Integration, and Visualisation},
+    TeXtitle    = {Design and Implementation of a Platform for Real-Time Environmental Sensor Data Collection, Integration, and Visualisation},
+    keywords    = {sensor data, environmental monitoring, IoT, MQTT, OGC SensorThings API, FastAPI, Next.js, TimescaleDB, Keycloak},
+    TeXkeywords = {sensor data, environmental monitoring, IoT, MQTT, OGC SensorThings API, FastAPI, Next.js, TimescaleDB, Keycloak},
+    abstract    = {%
+      % TODO: Write the abstract (150--250 words).
+      This thesis designs and implements a platform for real-time environmental sensor data collection,
+      integration, and visualisation, targeting the operational needs of Czech University of Life Sciences
+      Prague (CZU) within the context of the European eLTER long-term ecosystem research infrastructure.
+      The work builds on the UFZ Time.IO solution as a foundation, addresses its identified limitations,
+      and contributes the \texttt{water-dp} application layer and the \texttt{hydro-deploy} unified
+      deployment orchestrator. TODO: complete this abstract.
+    },
+    thanks      = {%
+      % TODO: Write acknowledgements.
+      I would like to thank my advisor, RNDr. Tom\'{a}\v{s} Rebok, Ph.D., for his guidance throughout this work.
+      TODO: complete acknowledgements.
+    },
+    bib         = thesis.bib,
+    facultyLogo = fithesis-fi,
+}
+
+%% Packages
+\usepackage{makeidx}
+\makeindex
+\usepackage{paralist}     %% Compact list environments
+\usepackage{amsmath}      %% Mathematics
+\usepackage{amsfonts}
+\usepackage{url}          %% URLs in bibliography
+\usepackage{listings}     %% Source code listings
+\usepackage{booktabs}     %% \toprule, \midrule, \bottomrule in tables
+\usepackage{tabularx}     %% Auto-width table columns
+\usepackage{longtable}    %% Tables that span multiple pages
+\usepackage{floatrow}     %% Captions above tables
+\usepackage[babel]{csquotes} %% Context-sensitive quotation marks
+\usepackage{tikz}         %% Diagrams and figures
+\usetikzlibrary{shapes, arrows.meta, positioning, fit, backgrounds, calc}
+%% microtype is already loaded by fithesis4 with [final,babel,nopatch=item]
+\usepackage{pdflscape}     %% Landscape pages in portrait document
+
+\floatsetup[table]{capposition=top}
+
+%% Allow line breaks inside \texttt (monospace) text
+\newcommand{\origtt}{}
+\let\origtt\texttt
+\renewcommand{\texttt}[1]{\origtt{\hyphenchar\font=`\-\relax #1}}
+%% Slightly relax line-breaking tolerance to avoid overfull hboxes
+\tolerance=1500
+\emergencystretch=1.5em
+
+\lstset{
+  basicstyle      = \ttfamily\small,
+  identifierstyle = \color{black},
+  keywordstyle    = \color{blue},
+  stringstyle     = \color{teal},
+  commentstyle    = \itshape\color{magenta},
+  breaklines      = true,
+  frame           = single,
+  numbers         = left,
+  numberstyle     = \tiny\color{gray},
+}
+
+\begin{document}
+
+\input{chapters/01-introduction}
+\input{chapters/02-background}
+\input{chapters/03-requirements}
+\input{chapters/04-architecture}
+\input{chapters/05-implementation}
+\input{chapters/06-testing}
+\input{chapters/07-conclusion}
+
+\printbibliography[heading=bibintoc]
+
+\end{document}

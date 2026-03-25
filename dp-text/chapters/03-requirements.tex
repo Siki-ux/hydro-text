@@ -1,0 +1,367 @@
+\chapter{Requirements Analysis}
+\label{chap:requirements}
+
+This chapter derives the requirements for the platform from the CZU deployment context and performs a gap analysis
+against the baseline Time.IO system. Section~\ref{sec:req-usecases} identifies the CZU use cases and stakeholder
+needs. Sections~\ref{sec:req-functional} and~\ref{sec:req-nonfunctional} enumerate the functional and non-functional
+requirements respectively. Section~\ref{sec:req-gap} compares those requirements against the capabilities of the
+original UFZ Time.IO system.
+
+%% ================================================================
+\section{CZU Use Cases and Stakeholder Needs}
+\label{sec:req-usecases}
+%% ================================================================
+
+Czech University of Life Sciences Prague (CZU) operates environmental monitoring infrastructure
+across river catchment monitoring projects and experimental plots. The primary stakeholders are
+research groups responsible for individual monitoring projects, each of which manages a distinct
+set of sensors and requires isolated data views with controlled access. Three actor roles interact
+with the platform: \emph{Researcher} (creates projects, configures sensors, analyses data),
+\emph{Administrator} (manages users, groups, and platform-wide settings), and
+\emph{External System} (automated data sources such as MQTT devices, SFTP servers, and external
+APIs). An additional implicit actor is the \emph{TSM Ingestion Pipeline}, which provisions
+infrastructure and processes data on behalf of the other actors.
+
+The use cases are organised into three groups: data ingestion, platform management, and data
+consumption. These groups are illustrated in Figures~\ref{fig:uc-ingestion},
+\ref{fig:uc-management}, and~\ref{fig:uc-consumption}.
+
+%% PlantUML source files live in figures/*.puml
+%% Regenerate PDFs: plantuml -tpdf figures/*.puml
+
+%% --- Use Case Diagram: Data Ingestion ---
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/uc-ingestion.pdf}
+  \caption{Use case diagram: data ingestion.}
+  \label{fig:uc-ingestion}
+\end{figure}
+
+%% --- Use Case Diagram: Platform Management ---
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/uc-management.pdf}
+  \caption{Use case diagram: platform management.}
+  \label{fig:uc-management}
+\end{figure}
+
+%% --- Use Case Diagram: Data Consumption ---
+%% NOTE: UC-16 (Run computation) removed — feature decommissioned.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/uc-consumption.pdf}
+  \caption{Use case diagram: data consumption.}
+  \label{fig:uc-consumption}
+\end{figure}
+
+The identified use cases are summarised in Table~\ref{tab:usecases}.
+%% UC-16 (Run computation) removed — feature decommissioned.
+
+\begin{longtable}{l p{0.58\textwidth} p{0.18\textwidth}}
+  \caption{Summary of use cases derived from the CZU deployment context.}
+  \label{tab:usecases} \\
+  \toprule
+  ID & Description & Primary actor \\
+  \midrule
+  \endfirsthead
+  \toprule
+  ID & Description & Primary actor \\
+  \midrule
+  \endhead
+  \midrule
+  \multicolumn{3}{r}{\emph{Continued on next page}} \\
+  \endfoot
+  \bottomrule
+  \endlastfoot
+  UC-1  & Upload a CSV data file to a Thing's storage bucket for batch ingestion.
+          The file is parsed using the Thing's configured parser and the resulting
+          Observations are inserted into the per-thing schema. & Researcher \\
+  UC-2  & Stream real-time MQTT data from a field sensor. The device publishes
+          payloads to a topic namespace; the mqtt-ingest worker parses
+          and stores the Observations. & MQTT Device \\
+  UC-3  & Periodically synchronise files from an external SFTP server into a
+          Thing's MinIO bucket, triggering file-ingest processing. & SFTP Server \\
+  UC-4  & Periodically pull data from an external REST API (e.g.\ DWD, TTN)
+          using a built-in or custom syncer script. & External API \\
+  UC-5  & Onboard multiple sensors at once by uploading a CSV template containing
+          Thing definitions, with per-row validation and error reporting. & Researcher \\
+  UC-6  & Create, update, and delete projects. Assign members with roles
+          (owner, editor, viewer) and link sensors to projects. & Researcher \\
+  UC-7  & Configure a sensor: select ingest type, assign a parser,
+          set MQTT credentials, define Datastream metadata, and specify
+          geographic coordinates. & Researcher \\
+  UC-8  & Define alert rules on a Datastream (threshold, no-data, computation
+          failure) with severity levels (info, warning, critical).
+          Acknowledge and resolve triggered alerts. & Researcher \\
+  UC-9  & Configure QA/QC test pipelines per project using SaQC functions with
+          tunable parameters. Trigger evaluation on demand. & Researcher \\
+  UC-10 & Create and manage Keycloak groups and assign users to role-based
+          subgroups (viewers, editors, admins). & Administrator \\
+  UC-11 & Create and publish geospatial layers (vector, raster, WMS) through
+          GeoServer with configurable access control. & Administrator \\
+  UC-12 & Visualise time-series data for one or more Datastreams with
+          interactive charts, decimation controls, and adjustable Y-axis bounds.
+          & Researcher \\
+  UC-13 & View sensor locations on an interactive map with colour-coded markers
+          and overlay geospatial layers. & Researcher \\
+  UC-14 & Export Observation data as CSV for offline analysis. & Researcher \\
+  UC-15 & Query the OGC SensorThings API endpoint for machine-to-machine data
+          access using standard \texttt{\$filter} and \texttt{\$expand} queries. & External Client \\
+\end{longtable}
+
+%% ================================================================
+\section{Functional Requirements}
+\label{sec:req-functional}
+%% ================================================================
+
+The functional requirements are derived from the use cases in Section~\ref{sec:req-usecases}
+and are grouped into eight areas. Each requirement is assigned an identifier for traceability
+in Chapter~\ref{chap:testing}.
+
+\subsection{Data Ingestion}
+\label{sec:req-functional-ingestion}
+
+\begin{description}
+  \item[FR-1] The system shall ingest real-time sensor data via MQTT, supporting device-specific
+    parsers that can be registered and selected per Thing. \emph{(UC-2)}
+  \item[FR-2] The system shall ingest historical data from CSV files uploaded to a Thing's
+    object-storage bucket, parsed using the Thing's configured file parser. \emph{(UC-1)}
+  \item[FR-3] The system shall periodically synchronise data from external SFTP servers,
+    downloading new files into the Thing's bucket for subsequent file-ingest processing.
+    \emph{(UC-3)}
+  \item[FR-4] The system shall periodically pull data from external REST APIs using built-in
+    syncers (DWD, TTN, Bosch) or user-provided custom syncer scripts. \emph{(UC-4)}
+  \item[FR-5] The system shall support uploading custom MQTT parser scripts and custom API
+    syncer scripts, validated before deployment. \emph{(UC-2, UC-4)}
+\end{description}
+
+\subsection{Sensor Management}
+\label{sec:req-functional-sms}
+
+\begin{description}
+  \item[FR-6] The system shall support creating, updating, and deleting Things with configurable
+    ingest type (MQTT, SFTP, external API), parser assignment, and geographic coordinates.
+    \emph{(UC-7)}
+  \item[FR-7] The system shall allow bulk import of Thing definitions from a CSV file, with
+    per-row validation and error reporting. A downloadable CSV template shall be provided.
+    \emph{(UC-5)}
+  \item[FR-8] The system shall track sensor activity per Thing, detecting inactivity based on
+    a configurable threshold (default: 24~hours) and raising alerts when no data is received.
+    \emph{(UC-8)}
+  \item[FR-9] The system shall manage MQTT device types and CSV parser definitions as reusable
+    catalogue entries that can be assigned to multiple Things. \emph{(UC-7)}
+\end{description}
+
+\subsection{Project Management}
+\label{sec:req-functional-projects}
+
+\begin{description}
+  \item[FR-10] The system shall support creating, updating, and deleting projects. Each project
+    shall group a set of Things with shared access control. \emph{(UC-6)}
+  \item[FR-11] The system shall support assigning users to projects with one of three roles:
+    owner (full control), editor (modify data and configuration), or viewer (read-only access).
+    \emph{(UC-6)}
+  \item[FR-12] The system shall create a dedicated TimeIO database schema per project for
+    per-thing observation storage. \emph{(UC-6)}
+\end{description}
+
+\subsection{Data Quality}
+\label{sec:req-functional-quality}
+
+\begin{description}
+  \item[FR-13] The system shall support configuring QA/QC test pipelines per project, using
+    functions from the SaQC (Statistical Quality Control) library with tunable parameters.
+    \emph{(UC-9)}
+  \item[FR-14] The system shall execute QA/QC tests automatically when new data is parsed
+    (triggered by the \texttt{data\_parsed} MQTT event) and store quality flags alongside
+    Observations. \emph{(UC-9)}
+  \item[FR-15] The system shall allow on-demand triggering of QA/QC evaluation through the
+    API. \emph{(UC-9)}
+\end{description}
+
+\subsection{Visualisation}
+\label{sec:req-functional-viz}
+
+\begin{description}
+  \item[FR-16] The system shall provide interactive time-series charts with support for multiple
+    Datastream overlays, decimation controls for large datasets, and adjustable Y-axis bounds.
+    \emph{(UC-12)}
+  \item[FR-17] The system shall display sensor locations on an interactive map with colour-coded
+    markers and popup details. WMS/WFS geospatial layers shall be overlayable. \emph{(UC-13)}
+  %% FR-18 removed — custom dashboards decommissioned.
+  \item[FR-19] The system shall allow exporting Observation data as CSV files for offline
+    analysis. \emph{(UC-14)}
+\end{description}
+
+\subsection{Authentication and Access Control}
+\label{sec:req-functional-auth}
+
+\begin{description}
+  \item[FR-20] The system shall authenticate users via OpenID Connect (OIDC) through a
+    Keycloak identity provider. User registration, login, token refresh, and password change
+    shall be supported. \emph{(UC-6, UC-10)}
+  \item[FR-21] The system shall enforce a two-tier role-based access control model:
+    Tier~1 at the group level (viewer, editor, admin roles stored in Keycloak subgroups) and
+    Tier~2 at the project level (owner, editor, viewer roles stored in the application database).
+    Realm-level administrators shall override all restrictions. \emph{(UC-10)}
+  \item[FR-22] The system shall support creating and managing Keycloak groups with role-based
+    subgroups. Group membership shall propagate as default permissions for projects within
+    the group. \emph{(UC-10)}
+\end{description}
+
+\subsection{Batch Import}
+\label{sec:req-functional-batch}
+
+\begin{description}
+  \item[FR-23] The system shall allow uploading historical time-series data as CSV files
+    (up to 200~MB) with automatic Datastream mapping. \emph{(UC-1)}
+  \item[FR-24] The system shall allow importing geospatial data in GeoJSON format (up to
+    200~MB) with streamed processing. \emph{(UC-11)}
+\end{description}
+
+\subsection{Multilingual Interface}
+\label{sec:req-functional-i18n}
+
+\begin{description}
+  \item[FR-25] The user interface shall be available in English, Czech, and Slovak, with
+    locale detection based on browser settings and manual override. \emph{(all use cases)}
+\end{description}
+
+%% ================================================================
+\section{Non-Functional Requirements}
+\label{sec:req-nonfunctional}
+%% ================================================================
+
+The non-functional requirements govern the operational and quality properties of the platform.
+
+\begin{description}
+  \item[NFR-1] \textbf{Containerised deployment.} The entire platform shall be deployable as
+    Docker Compose services. Rootless Podman shall be supported as an alternative container
+    runtime.
+
+  \item[NFR-2] \textbf{OGC SensorThings API compliance.} The platform shall expose observation
+    data through a FROST-Server instance that is fully compliant with OGC STA Part~1 (Sensing),
+    including \texttt{\$filter}, \texttt{\$expand}, and \texttt{\$orderby} query parameters.
+
+  \item[NFR-3] \textbf{OIDC standards compliance.} Authentication shall follow the OpenID Connect
+    standard with JWT token validation, JWKS key rotation, and standard token endpoints.
+
+  \item[NFR-4] \textbf{Modular extensibility.} New ingestion worker types, parsers, and API
+    syncers shall be addable without modifying the core platform. Custom parsers and syncers shall
+    be uploadable as Python scripts at runtime.
+
+  \item[NFR-5] \textbf{Security.} User-uploaded parser and syncer scripts shall be sandboxed
+    through AST-based validation that blocks dangerous operations (\texttt{eval}, \texttt{exec},
+    \texttt{open}, \texttt{getattr}/\texttt{setattr}). API rate limiting shall protect
+    authentication endpoints. Credentials stored in the database shall be encrypted.
+
+  \item[NFR-6] \textbf{Maintainability.} The codebase shall use database migrations (Alembic
+    for \texttt{water-dp}, Flyway for TSM) to manage schema evolution. The API shall generate
+    OpenAPI documentation automatically.
+
+  \item[NFR-7] \textbf{eLTER interoperability alignment.} The architecture shall support
+    future extension toward eLTER metadata standards and cross-site federation without
+    requiring a fundamental redesign.
+
+  \item[NFR-8] \textbf{Unified deployment.} The combined TSM and \texttt{water-dp} stacks shall
+    be deployable through a single configuration file and Makefile, with automated secret
+    generation and health checks.
+\end{description}
+
+%% ================================================================
+\section{Gap Analysis: Time.IO vs.\ Target Platform}
+\label{sec:req-gap}
+%% ================================================================
+
+Table~\ref{tab:gap-analysis} summarises the gap between the Time.IO baseline capabilities and the
+requirements identified in Sections~\ref{sec:req-functional} and~\ref{sec:req-nonfunctional}.
+Each row identifies a capability that the upstream Time.IO system does not provide, the specific
+requirements it blocks, and the component that addresses the gap in this thesis.
+
+\begin{longtable}{l p{0.58\textwidth} p{0.19\textwidth}}
+  \caption{Gap analysis: Time.IO baseline vs.\ target platform requirements.}
+  \label{tab:gap-analysis} \\
+  \toprule
+  Gap & Description & Addressed by \\
+  \midrule
+  \endfirsthead
+  \toprule
+  Gap & Description & Addressed by \\
+  \midrule
+  \endhead
+  \midrule
+  \multicolumn{3}{r}{\emph{Continued on next page}} \\
+  \endfoot
+  \bottomrule
+  \endlastfoot
+
+  G-1 & \textbf{No project-oriented data model.} Time.IO organises Things by
+        configdb projects (Keycloak groups), but provides no application-level
+        project entity with member roles or sensor assignment.
+        \emph{(FR-10--12)} & \texttt{water-dp} \\[6pt]
+
+  G-2 & \textbf{No user-facing web portal.} The upstream frontends
+        (\texttt{tsm-frontend}, \texttt{thing-management}) provide only basic
+        Thing CRUD through Django or Vue.js admin interfaces. No unified portal
+        with time-series visualisation, map display, or alerting exists.
+        \emph{(FR-16--19)} & \texttt{water-dp} \\[6pt]
+
+  G-3 & \textbf{No geospatial layer management.} Time.IO stores geographic
+        coordinates in the configdb but provides no GIS integration, layer
+        publishing, or spatial query capabilities.
+        \emph{(FR-17, FR-24)} & \texttt{water-dp} \\[6pt]
+
+  G-4 & \textbf{Non-functional local STA views.} The original local STA views
+        contained issues that prevented FROST-Server from returning valid
+        responses for certain entity types.
+        \emph{(NFR-2)} & TSM adaptation \\[6pt]
+
+  G-5 & \textbf{Non-functional SMS service.} The Sensor Management System
+        backend was not operational; the \texttt{timeio-and-sms} combined
+        deployment was impossible to start due to broken dependencies.
+        \emph{(FR-6, FR-9)} & TSM adaptation \\[6pt]
+
+  G-6 & \textbf{No alert evaluation subsystem.} Time.IO provides no mechanism
+        for threshold monitoring, no-data detection, or notification of
+        anomalous conditions.
+        \emph{(FR-8, UC-8)} & \texttt{water-dp} \\[6pt]
+
+  G-7 & \textbf{No unified deployment mechanism.} The TSM and application
+        stacks are separate Docker Compose deployments with no shared
+        configuration, secret management, or health-check tooling.
+        \emph{(NFR-1, NFR-8)} & \texttt{hydro-deploy} \\[6pt]
+
+  G-8 & \textbf{No Podman rootless support.} The upstream Compose files use
+        Docker-specific features (environment list format, disabled service
+        references) that are incompatible with rootless Podman.
+        \emph{(NFR-1)} & \texttt{hydro-deploy} \\[6pt]
+
+  G-9 & \textbf{No multilingual interface.} The upstream frontends are
+        English-only with no internationalisation framework. Czech and Slovak
+        language support is required for CZU users.
+        \emph{(FR-25)} & \texttt{water-dp} \\[6pt]
+
+  %% G-10 removed — computation framework decommissioned.
+
+  G-11 & \textbf{Upstream frontend bugs.} Both \texttt{tsm-frontend} (Django)
+         and \texttt{thing-management} (Vue.js) generated MQTT configuration
+         messages that did not match the ingestion pipeline's expectations,
+         causing silent provisioning failures.
+         \emph{(FR-6, FR-7)} & \texttt{water-dp} \\[6pt]
+
+  G-12 & \textbf{Hardcoded parsers and device types.} All file parsers, MQTT
+         device-type parsers, and API syncers are implemented as Python classes
+         compiled into the Docker image. Adding support for a new sensor model
+         or file format requires source-code changes and redeployment; there is
+         no runtime mechanism for users to register custom parsers or device
+         types through a management interface.
+         \emph{(FR-5, FR-9, NFR-4)} & \texttt{water-dp} \\
+
+\end{longtable}
+
+The eleven gaps identified in Table~\ref{tab:gap-analysis} define the scope of the three
+contributions described in Chapters~\ref{chap:architecture} and~\ref{chap:implementation}:
+the \texttt{water-dp} application layer addresses gaps~G-1--G-3 and G-6--G-9, G-11, and G-12,
+the TSM adaptations address gaps~G-4 and~G-5, and the \texttt{hydro-deploy} deployment
+orchestrator addresses gaps~G-7 and~G-8. Each gap is revisited in the requirements evaluation
+in Chapter~\ref{chap:testing}.

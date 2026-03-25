@@ -1,0 +1,546 @@
+\chapter{Implementation}
+\label{chap:implementation}
+
+This chapter describes the implementation of the three platform components. Section~\ref{sec:impl-tsm} covers the
+adaptations made to the \texttt{tsm-orchestration} stack. Section~\ref{sec:impl-backend} describes the
+\texttt{water-dp} backend. Section~\ref{sec:impl-frontend} covers the frontend portal. Section~\ref{sec:impl-deploy}
+documents the \texttt{hydro-deploy} unified deployment layer.
+
+%% ----------------------------------------------------------------
+\section{TSM Orchestration Adaptation}
+\label{sec:impl-tsm}
+%% ----------------------------------------------------------------
+
+The upstream \texttt{tsm-orchestration} codebase required several targeted adaptations to enable the CZU deployment.
+All modifications to upstream files are marked with \texttt{TSM-TEMP-*} identifiers in the codebase to allow clean
+identification should a future upstream fix make them redundant. The architectural rationale for these changes
+was discussed in Section~\ref{sec:arch-db-staviews}; this section describes their implementation.
+
+\subsection{Local STA Views}
+\label{sec:impl-tsm-staviews}
+
+The upstream STA views in \texttt{src/sql/sta\_views/} query tables owned by the external SMS service,
+which was non-functional (Section~\ref{sec:bg-timeio-limitations}). The replacement views reside in
+\texttt{src/sql/sta\_views\_local/} and query the local \texttt{thing}, \texttt{datastream}, and
+\texttt{observation} tables directly.
+
+Seven view files replace the original set. The \texttt{THINGS} view maps the local \texttt{thing} table
+to the STA entity columns expected by FROST-Server, appending the Thing's UUID into the JSONB
+\texttt{PROPERTIES} column. The \texttt{DATASTREAMS} view extracts unit-of-measurement metadata from the
+\texttt{properties} JSONB column and constructs both the flat columns (\texttt{UNIT\_NAME},
+\texttt{UNIT\_SYMBOL}, \texttt{UNIT\_DEFINITION}) and the nested JSON object
+(\texttt{UNIT\_OF\_MEASUREMENT}) that FROST requires. The \texttt{OBSERVATIONS} view adds a
+\texttt{dataSource: local} marker to the output properties to distinguish locally ingested
+observations from those originating through SMS. The \texttt{LOCATIONS} view extracts GeoJSON
+coordinates from the Thing's \texttt{properties} JSON and constructs both the text-based
+\texttt{LOCATION} column and the PostGIS \texttt{GEOM} geometry column.
+
+The remaining entities --- \texttt{SENSORS}, \texttt{FEATURES\_OF\_INTEREST}, and
+\texttt{OBSERVED\_PROPERTIES} --- have no local equivalent. Their views return an empty result
+set (\texttt{WHERE false}) so that FROST-Server starts without errors but does not expose
+fabricated data. A separate \texttt{THINGS\_LOCATIONS} view provides the join table that FROST
+uses internally to associate Things with Locations.
+
+A corresponding set of Grafana views in \texttt{src/sql/grafana\_views\_local/} provides
+a \texttt{datastream\_properties} view used by the Grafana dashboards to display datastream
+metadata without depending on SMS tables.
+
+Every file in the local view set begins with a header comment
+\texttt{-{}-~TSM-TEMP-DISABLED}, followed by an instruction to revert by deleting the file
+and setting \texttt{USE\_LOCAL\_STA\_VIEWS=false}. At runtime, the thing-setup worker checks
+this environment variable (defaulting to \texttt{true}) and deploys the local or upstream
+view set accordingly during schema provisioning.
+
+\subsection{Compose Modularisation}
+\label{sec:impl-tsm-compose}
+
+To enable \texttt{water-dp} to run alongside TSM without modifying the upstream Compose file, a
+dedicated overlay was added:
+\texttt{docker-compose-water-dp.yml}. This file defines a single service, \texttt{water-dp-api},
+that connects to the TSM database, MQTT broker, FROST-Server, and Keycloak instance. The
+\texttt{search\_path} is set to \texttt{water\_dp,public} so that the API can access both its own
+tables and the TSM configuration tables. The overlay also starts a Redis container for the Celery
+task queue.
+
+The overlay approach ensures that the upstream \texttt{docker-compose.yml} remains unmodified and
+can be updated independently. The full Compose file chain used by \texttt{hydro-deploy} is
+described in Section~\ref{sec:impl-deploy-compose}.
+
+\subsection{Worker Architecture}
+\label{sec:impl-tsm-workers}
+
+All TSM workers extend \texttt{AbstractHandler} from \texttt{timeio/mqtt.py}, which encapsulates
+the MQTT connection lifecycle: broker connection, topic subscription, message dispatch, and
+self-healthcheck. The healthcheck mechanism publishes a ping to
+\texttt{health/<client\_id>/ping} every 60~seconds and monitors a configurable timeout
+(default 600~seconds); if no messages are received within the timeout, the worker terminates.
+
+Each worker runs in its own Docker container. There is no central dispatcher; scheduling is
+handled by the Mosquitto topic routing and the cron scheduler for periodic tasks. All
+\texttt{docker-compose} entrypoints use \texttt{worker\_launcher.sh}, a Bash wrapper that
+restarts the Python process up to three times within a configurable window
+(\texttt{RESTART\_WINDOW\_SECONDS}, default~10). If the process fails immediately on each
+attempt, the launcher exits with status~0 to prevent Docker from triggering an infinite
+restart loop.
+
+Table~\ref{tab:tsm-workers} summarises each worker's input topic, output, and responsibility.
+
+\begin{landscape}
+{\small
+\begin{longtable}{p{0.12\linewidth} p{0.20\linewidth} p{0.13\linewidth} p{0.48\linewidth}}
+  \caption{TSM worker processes and their MQTT topics.}
+  \label{tab:tsm-workers} \\
+  \textbf{Worker} & \textbf{Subscribes To} & \textbf{Publishes} & \textbf{Responsibility} \\
+  \hline
+  \endfirsthead
+  \textbf{Worker} & \textbf{Subscribes To} & \textbf{Publishes} & \textbf{Responsibility} \\
+  \hline
+  \endhead
+  configdb-updater
+    & \texttt{frontend\_thing\_update}
+    & \texttt{configdb\_update}
+    & Validates versioned Thing configuration messages (v4--v7) and upserts them into the
+      configuration database. \\[4pt]
+  thing-setup
+    & \texttt{configdb\_update}
+    & ---
+    & Orchestrates six provisioning sub-handlers: database schema, MinIO bucket, MQTT
+      credentials, Grafana dashboard, FROST instance, and crontab entries. \\[4pt]
+  mqtt-ingest
+    & \texttt{mqtt\_ingest/\#}
+    & \texttt{data\_parsed}
+    & Parses raw IoT device messages using the parser framework (Section~\ref{sec:impl-tsm-parsers}),
+      resolves the Thing by MQTT username, and inserts observations via the database API. \\[4pt]
+  file-ingest
+    & \texttt{object\_storage\_notification}
+    & \texttt{data\_parsed}
+    & Parses uploaded CSV or JSON files from MinIO using \texttt{CsvParser} or
+      \texttt{JsonParser} and inserts observations. \\[4pt]
+  run-qaqc
+    & \texttt{data\_parsed}
+    & \texttt{qaqc\_done}
+    & Runs configurable quality-control tests against newly parsed observations and writes
+      quality flags. \\[4pt]
+  sync-extapi
+    & \texttt{sync\_ext\_apis}
+    & \texttt{data\_parsed}
+    & Fetches data from external HTTP APIs (e.g.\ DWD weather service) on a cron schedule. \\[4pt]
+  sync-extsftp
+    & \texttt{sync\_ext\_sftp}
+    & ---
+    & Downloads files from external SFTP servers into MinIO, which triggers file-ingest
+      via S3 event notification. \\[4pt]
+  grafana-user
+    & \texttt{userinfo\_keycloak}
+    & ---
+    & Synchronises Keycloak user accounts with Grafana organisations and roles. \\[4pt]
+  monitor-mqtt
+    & \texttt{monitor\_mqtt}
+    & ---
+    & Collects Mosquitto broker metrics (\texttt{\$SYS/broker/}) and writes them to the
+      monitoring schema. \\
+\end{longtable}
+}
+\end{landscape}
+
+\subsubsection{Parser Framework}
+\label{sec:impl-tsm-parsers}
+
+The parser framework in \texttt{src/timeio/parser/} uses a class hierarchy rooted in
+\texttt{AbcParser}, which defines the abstract interface: \texttt{do\_parse()},
+\texttt{to\_observations()}, and date accessors.
+
+Two branches extend this base. \texttt{PandasParser} targets file-based ingestion and uses
+pandas \texttt{DataFrames} for tabular data. Its subclasses \texttt{CsvParser} and
+\texttt{JsonParser} handle CSV files (with configurable timestamp columns and formats) and
+JSON files (with \texttt{json\_normalize} support), respectively. \texttt{MqttParser}
+targets real-time MQTT messages and returns \texttt{Observation} dataclass instances directly.
+Device-specific subclasses handle protocol variations: \texttt{CampbellCr6Parser} for
+Campbell~CR6 data loggers, \texttt{BrightskyDwdApiParser} for the DWD weather API,
+\texttt{ChirpStackGenericParser} for LoRaWAN ChirpStack payloads, and
+\texttt{YdocMl417Parser} for YDOC~ML-417 loggers. A \texttt{SineDummyParser} generates
+synthetic sine-wave data for testing.
+
+Parsers are resolved at runtime by the \texttt{get\_parser()} factory function, which looks up
+the parser type string in a static registry dictionary. If no match is found, a dynamic loading
+fallback fetches a user-provided parser script from MinIO and executes it in an isolated
+module namespace.
+
+\subsection{Assessment of the TSM-TEMP Approach}
+\label{sec:impl-tsm-assessment}
+
+The \texttt{TSM-TEMP} markers were introduced with the expectation that the upstream SMS
+service would eventually become operational and the local views would be replaced. At the
+time of writing, the upstream project shows continued development activity but the SMS
+service remains non-functional.
+
+From a practical perspective, the local views fulfil the same role as the SMS-backed views
+with lower operational complexity: they query tables that the platform already manages, avoid
+foreign-table lookups to an external service, and require no additional infrastructure. The
+migration path back to upstream views is well-defined --- each affected file documents the
+revert procedure in its header comment --- but the diminishing likelihood of an upstream
+fix suggests that a targeted rewrite of the affected components is the more defensible
+long-term approach.
+
+%% ----------------------------------------------------------------
+\section{Water Data Platform --- Backend}
+\label{sec:impl-backend}
+%% ----------------------------------------------------------------
+
+
+%   - SQLAlchemy 2.0 async ORM patterns
+%   - Alembic migration strategy
+%
+% Key implementation areas:
+%   (a) Project-oriented data model: linking sensors to projects across the TSM schema boundary
+%   (b) FROST API client: querying and creating Things/Datastreams without direct DB access
+%   (c) Alert evaluation: definitions (threshold, comparison, target datastream),
+%                          MQTT-triggered worker, alert state machine
+%   (d) GeoServer integration via REST API
+%   (f) Keycloak OIDC: token validation middleware, per-project role enforcement
+
+The \texttt{water-dp} API is a FastAPI application that acts as the application-logic layer on top of
+\texttt{tsm-orchestration}. It is structured as a layered Python package in \texttt{api/app/}
+with four tiers: endpoint routers, Pydantic schemas, service classes, and SQLAlchemy models.
+
+\subsection{Project Structure}
+\label{sec:impl-backend-structure}
+
+The \texttt{api/app/} directory follows a conventional layered layout:
+
+\begin{itemize}
+  \item \textbf{Endpoints} (\texttt{api/v1/endpoints/}) --- sixteen router modules, each
+        responsible for one REST resource. All routers are assembled into a single
+        \texttt{APIRouter} in \texttt{api/v1/api.py} and mounted under the
+        \texttt{/api/v1} prefix.
+  \item \textbf{Schemas} (\texttt{schemas/}) --- Pydantic v2 models for request validation
+        and response serialisation. A \texttt{frost/} sub-package provides typed models for
+        STA entities (\texttt{Thing}, \texttt{Datastream}, \texttt{Observation}).
+  \item \textbf{Services} (\texttt{services/}) --- business-logic classes that the endpoints
+        delegate to. A \texttt{timeio/} sub-package encapsulates all integration points with
+        the TSM stack: FROST client, MQTT publisher, orchestrator, and direct database access.
+  \item \textbf{Models} (\texttt{models/}) --- SQLAlchemy~2.0 ORM classes mapped to the
+        \texttt{water\_dp} schema. A shared \texttt{BaseModel} mixin provides audit columns
+        (\texttt{created\_at}, \texttt{updated\_at}, \texttt{created\_by},
+        \texttt{updated\_by}).
+  \item \textbf{Tasks} (\texttt{tasks/}) --- Celery task definitions for asynchronous work:
+        alert evaluation, sensor activity recording, inactivity monitoring, and data
+        simulation.
+  \item \textbf{Worker} (\texttt{worker/}) --- MQTT subscriber that bridges TSM events to
+        Celery tasks.
+\end{itemize}
+
+The application is created in \texttt{main.py} with a middleware stack applied in order:
+\texttt{LoggingMiddleware} (UUID-tagged request logging), \texttt{SecurityHeadersMiddleware}
+(security response headers), \texttt{ErrorHandlingMiddleware} (structured JSON error
+responses), Starlette \texttt{CORSMiddleware}, \texttt{TrustedHostMiddleware}, and
+\texttt{SlowAPIMiddleware} (rate limiting). OpenAPI documentation is exposed only when the
+application runs in debug mode.
+
+Four Alembic migration files manage the \texttt{water\_dp} schema evolution: the initial
+schema creates tables for projects, dashboards, geospatial layers, alert definitions, alerts,
+and jobs; subsequent migrations add the \texttt{sensor\_activity\_configs}
+table, the \texttt{project\_members} table for RBAC, and the \texttt{sensor\_id}/\texttt{datastream\_id}
+columns on alert definitions. In production, only Alembic manages schema changes; in debug
+mode, SQLAlchemy's \texttt{create\_all()} is called at startup for convenience.
+
+\subsection{Project and Sensor Management}
+\label{sec:impl-backend-projects}
+
+The central abstraction is the \emph{project}, which groups sensors, alerts, dashboards, and
+members into a logical unit. The \texttt{Project} model stores metadata (name, description,
+visibility) and references a Keycloak group through \texttt{authorization\_provider\_group\_name}.
+Sensors are linked to projects via the \texttt{project\_sensors} association table, which maps
+a project UUID to a Thing UUID in the TSM configuration database.
+
+The \texttt{ProjectService} handles project CRUD, member management, and sensor-project
+associations. When a sensor is linked to a project, the service resolves the Thing's schema
+name through the TSM configuration database, enabling the API to query observations in the
+correct per-thing schema. The \texttt{AsyncThingService} provides the core sensor operations
+through the asynchronous FROST client: listing Things, fetching Datastreams, and retrieving
+time-filtered Observations. A synchronous \texttt{ThingService} variant exists for use in
+Celery tasks, where an async event loop is not available.
+
+Sensor creation follows the Thing lifecycle described in Section~\ref{sec:arch-mqtt-lifecycle}.
+The \texttt{TimeIOOrchestrator} in \texttt{services/timeio/orchestrator.py} constructs the
+configuration payload, derives the schema name from the Keycloak group, generates MQTT and
+S3 credentials, and publishes the message to \texttt{frontend\_thing\_update}. The downstream
+TSM workers then provision the infrastructure automatically.
+
+\subsection{FROST API Client Integration}
+\label{sec:impl-backend-frost}
+
+Two FROST client implementations exist in \texttt{services/timeio/}: a synchronous variant
+(\texttt{frost\_client.py}, using \texttt{requests}) and an asynchronous variant
+(\texttt{async\_frost\_client.py}, using \texttt{httpx}). Both implement the same method
+surface: \texttt{get\_thing()}, \texttt{get\_things()} with STA \texttt{@iot.nextLink}
+pagination, \texttt{list\_datastreams()}, \texttt{get\_observations()} with time-range
+filtering, and \texttt{get\_locations()}.
+
+The URL scheme follows the FROST multi-tenancy pattern:
+\texttt{\{base\_url\}/\{project\_name\}/\{version\}/\{path\}}, where
+\texttt{project\_name} maps to a FROST path prefix derived from the Thing's schema.
+The synchronous client uses an \texttt{@lru\_cache(maxsize=128)} factory keyed by
+\texttt{(base\_url, project\_name, version, frost\_server)} to avoid creating redundant
+client instances. The asynchronous client maintains a module-level dictionary cache
+with \texttt{httpx.AsyncClient} instances configured for connection pooling (100~maximum
+connections, 20~keep-alive).
+
+The asynchronous client is used by \texttt{AsyncThingService} for concurrent FROST
+operations, such as fetching Things for multiple projects in parallel during project list
+rendering. The synchronous client is used in Celery tasks and in endpoints where the
+overhead of an async context switch is not justified.
+
+\subsection{Alert Evaluation System}
+\label{sec:impl-backend-alerts}
+
+The alert system consists of definitions, evaluators, and a state machine. An
+\texttt{AlertDefinition} is created per project and specifies: the target (a specific
+datastream or a QA/QC rule), conditions (field, operator, threshold), and an active flag.
+
+The \texttt{AlertEvaluator} class provides two evaluation entry points:
+
+\begin{enumerate}
+  \item \textbf{Sensor data evaluation} --- \texttt{evaluate\_all\_active\_sensor\_rules()}
+        periodically queries the latest observation for each targeted datastream and
+        evaluates threshold conditions. Conditions specify an operator (\texttt{>},
+        \texttt{<}, \texttt{==}) and a threshold value.
+  \item \textbf{QA/QC evaluation} --- \texttt{evaluate\_qaqc\_rules\_for\_thing()} queries
+        the per-thing observation table directly via \texttt{psycopg2}, computes the ratio
+        of flagged observations within a configurable time window, and compares against
+        the threshold. Flag levels are classified as \texttt{BAD} (quality value $\geq 255$),
+        \texttt{QUESTIONABLE} ($\geq 2$), or \texttt{ANY} ($> 0$).
+\end{enumerate}
+
+The MQTT integration (Section~\ref{sec:arch-mqtt-alerts}) bridges TSM events to the
+evaluator: the \texttt{mqtt\_handler.py} subscriber receives \texttt{qaqc\_done} messages
+and dispatches the \texttt{evaluate\_qaqc\_alerts\_for\_thing} Celery task with the
+affected Thing's UUID. Similarly, \texttt{data\_parsed} messages trigger the
+\texttt{record\_sensor\_activity} task for inactivity monitoring.
+
+Alert deduplication is enforced by checking for existing active alerts per definition before
+creating new ones. QA/QC alerts are automatically resolved when the flagged ratio drops below
+the threshold. The three-state lifecycle (\texttt{active} $\to$ \texttt{acknowledged} $\to$
+\texttt{resolved}) is described in Section~\ref{sec:arch-mqtt-alerts}.
+
+\subsection{GeoServer Integration}
+\label{sec:impl-backend-geoserver}
+
+The \texttt{GeoServerService} in \texttt{services/geoserver\_service.py} wraps the GeoServer
+REST~API for programmatic layer management. All operations use HTTP Basic authentication
+against the GeoServer admin account.
+
+The service provides methods for workspace creation, PostGIS datastore configuration, and
+layer publishing. The \texttt{publish\_layer()} method registers a new feature type with a
+specified spatial reference system (SRS), default style, and visibility. The
+\texttt{publish\_sql\_view()} method creates layers backed by parameterised SQL views using
+GeoServer's \texttt{JDBC\_VIRTUAL\_TABLE} metadata, which enables dynamic per-project
+sensor views without pre-creating database views.
+
+Geospatial features are stored in the \texttt{water\_dp} schema using GeoAlchemy2
+\texttt{Geometry} columns (SRID~4326). The \texttt{GeoLayer} and \texttt{GeoFeature} models
+represent uploaded layers and their individual features. Layer-to-project associations
+are managed through the \texttt{LayerProjectAssignment} model.
+
+\subsection{Authentication and Authorisation}
+\label{sec:impl-backend-auth}
+
+Token validation is implemented in \texttt{core/security.py}. The module fetches the JWKS
+from Keycloak's well-known endpoint and verifies RS256 signatures on incoming JWT tokens.
+The JWKS is cached with a one-hour TTL and refreshed under an \texttt{asyncio.Lock} to
+prevent concurrent refresh requests. Multi-issuer support allows tokens issued by the
+internal Keycloak URL, the Docker-internal address (\texttt{keycloak:8080}), and an optional
+external URL to be accepted.
+
+The authentication dependency chain in \texttt{api/deps.py} provides three levels of access
+control: \texttt{get\_current\_user()} extracts and verifies the bearer token,
+\texttt{has\_role()} checks for a specific Keycloak realm role, and
+\texttt{get\_current\_active\_superuser()} verifies administrator privileges.
+
+Per-project authorisation uses the two-tier RBAC model described in
+Section~\ref{sec:arch-tech-keycloak}. The \texttt{RBACService} in
+\texttt{services/rbac\_service.py} resolves the effective role by evaluating six rules in
+priority order: (1)~realm administrator receives owner access to all projects,
+(2)~Keycloak group administrator receives owner access to projects in their group,
+(3)~an explicit \texttt{project\_members} row grants the stored role,
+(4)~the original project creator is treated as owner for backward compatibility,
+(5)~any member of the project's Keycloak group is granted viewer access, and
+(6)~if none of the above match, the request is rejected with HTTP~403. The JWT \texttt{groups} claim is parsed by
+\texttt{parse\_group\_roles()}, which extracts the Keycloak subgroup suffix
+(e.g.\ \texttt{/GroupName/editors} yields role \texttt{editor}). The resolved role determines
+the capability set: \texttt{can\_view}, \texttt{can\_edit\_settings},
+\texttt{can\_edit\_alerts}, \texttt{can\_link\_sensors}, \texttt{can\_manage\_members},
+\texttt{can\_delete}, \texttt{global\_sms\_access}, and \texttt{global\_layers\_access}.
+
+%% ----------------------------------------------------------------
+\section{Water Data Platform --- Frontend Portal}
+\label{sec:impl-frontend}
+%% ----------------------------------------------------------------
+
+The frontend portal is a Next.js~15 application using the App~Router with React~19. The
+application is deployed under the \texttt{/portal} base path and built in \texttt{standalone}
+output mode for containerised deployment.
+
+\subsection{Information Architecture}
+\label{sec:impl-frontend-ia}
+
+The routing structure follows the App~Router convention, where each directory under
+\texttt{app/} corresponds to a URL segment. The major route groups are:
+
+\begin{itemize}
+  \item \textbf{\texttt{/projects}} --- project list, creation, and per-project views. Each
+        project page (\texttt{/projects/[id]}) provides sub-routes for sensor data
+        (\texttt{/data}), individual sensor time-series (\texttt{/data/[sensorId]}),
+        dashboards (\texttt{/dashboards}), alerts, QA/QC configuration, sensor simulator,
+        and project settings.
+  \item \textbf{\texttt{/sms}} --- Sensor Management System interface for sensor, parser,
+        device type, and external API type administration. Access is restricted to users
+        with at least the \texttt{editor} role.
+  \item \textbf{\texttt{/layers}} --- GeoServer layer management: listing, upload, and
+        detail views.
+  \item \textbf{\texttt{/settings}} --- user profile and password management.
+\end{itemize}
+
+All authenticated routes use a protected layout pattern. Each layout calls the server-side
+\texttt{auth()} function from NextAuth and redirects unauthenticated users to the sign-in
+page. The SMS and Layers layouts additionally check the JWT group role to enforce the minimum
+\texttt{editor} privilege. The root layout wraps the entire application in a \texttt{Providers}
+component that supplies the React~Query \texttt{QueryClientProvider}, the NextAuth
+\texttt{SessionProvider}, a theme context, and an idle-timeout monitor.
+
+\subsection{Time-Series Visualisation}
+\label{sec:impl-frontend-charts}
+
+The \texttt{TimeSeriesChart} component renders multi-series time-series data using the
+Recharts library. The component supports interactive zoom via two mechanisms: a
+\texttt{ReferenceArea} drawn by click-and-drag to select a time range, and a
+\texttt{Brush} component for scrolling through the full dataset. Multiple series
+(each with its own colour, label, and unit) are merged into a unified time axis by indexing
+all data points into a shared timestamp map.
+
+Data is fetched through React~Query hooks in \texttt{hooks/queries/}, which provide
+caching, background refetching, and loading-state management. Ten query-hook modules
+cover the major resource types: projects, sensors, dashboards, alerts, QA/QC,
+SMS, layers, simulator, and permissions. Query keys are centralised in
+\texttt{hooks/queries/keys.ts} to ensure cache consistency across components.
+
+The API client (\texttt{lib/api.ts}) is an Axios instance with a request interceptor that
+attaches the NextAuth access token as a \texttt{Bearer} header. An in-memory token cache
+with a 60-second expiry buffer avoids redundant \texttt{getSession()} calls.
+
+\subsection{Geospatial Layer Viewer}
+\label{sec:impl-frontend-geo}
+
+Geospatial rendering uses MapLibre~GL~JS in three components. The \texttt{ProjectMap}
+component displays sensor locations as clustered GeoJSON markers on a CARTO basemap
+(dark-matter or positron, selected by the theme context). Marker popups show the latest
+datastream values, refreshed every 30~seconds. GeoServer WMS layers assigned to the
+project are overlaid as raster tiles, and a layer-switching menu allows users to
+toggle their visibility.
+
+The \texttt{LocationPickerMap} component provides an interactive click-or-drag marker for
+setting sensor coordinates during Thing creation. The \texttt{SensorMiniMap} component
+renders a read-only map in sensor detail views showing the sensor's location.
+
+\subsection{Data Quality Interface}
+\label{sec:impl-frontend-quality}
+
+The QA/QC interface is accessible at two levels: per-project (\texttt{/projects/[id]/qaqc})
+and globally through the SMS section (\texttt{/sms/qa-qc}). The \texttt{SensorQAQCSection}
+component renders the QC test configuration for a single sensor, allowing users to define
+test types, thresholds, and parameters. A dedicated API client (\texttt{lib/qaqc-api.ts})
+provides typed functions for three endpoint scopes: SMS-level, Thing-level, and
+project-level QA/QC configuration.
+
+\subsection{Batch Import}
+\label{sec:impl-frontend-batch}
+
+The \texttt{BulkImportDialog} component provides a drag-and-drop CSV upload workflow for
+creating multiple sensors in a single operation. The \texttt{DataUploadModal} and
+\texttt{DatasetUploadModal} components handle historical observation data import: users
+upload CSV files which are stored in the per-Thing MinIO bucket, triggering the TSM
+file-ingest pipeline. The per-sensor data view also includes a \texttt{FileUploadDialog}
+for individual file uploads.
+
+\subsection{Multilingual Support}
+\label{sec:impl-frontend-i18n}
+
+The portal supports three languages: English, Czech, and Slovak. The implementation uses
+a custom solution based on a Zustand store (\texttt{useLanguageStore}) with
+\texttt{persist} middleware, which saves the selected language to \texttt{localStorage}
+under the key \texttt{language-storage}. Locale files in \texttt{locales/} export typed
+\texttt{Dictionary} objects (\texttt{en.ts}, \texttt{cs.ts}, \texttt{sk.ts}) that share
+a common interface definition.
+
+The \texttt{useTranslation()} hook returns a \texttt{t(path, params?)} function that
+traverses the dictionary by dot-notation keys (e.g.\ \texttt{t('header.projects')}) and
+supports \texttt{\{\{param\}\}} interpolation. The \texttt{LanguageSwitcher} component in
+the application header allows users to switch the language at runtime.
+
+Locale selection is purely client-side; there is no server-side locale detection or
+URL-based language routing. This design was chosen to simplify the deployment and avoid
+additional Next.js middleware complexity, at the cost of the initial page flash before
+the persisted language is loaded from storage.
+
+%% ----------------------------------------------------------------
+\section{Hydro Deploy --- Unified Deployment Layer}
+\label{sec:impl-deploy}
+%% ----------------------------------------------------------------
+
+The \texttt{hydro-deploy} repository provides a single entry point for deploying the full integrated platform.
+It does not introduce any new runtime services; its sole responsibility is assembly and configuration.
+The architectural design --- Compose file merging, secret management, Makefile targets, and
+Podman support --- was described in Section~\ref{sec:arch-deployment}. This section covers
+implementation details not addressed there.
+
+\subsection{Compose Multi-File Merge}
+\label{sec:impl-deploy-compose}
+
+The Compose file chain is described architecturally in Section~\ref{sec:arch-deploy-compose}.
+In the Docker variant, four files are merged:
+
+\begin{enumerate}
+  \item \texttt{tsm-orchestration/docker-compose.yml} --- all TSM core services.
+  \item \texttt{water-dp/docker-compose.yml} --- standalone water-dp services.
+  \item \texttt{water-dp/docker-compose.tsm.yml} --- overlay that redirects water-dp
+        services to TSM's database, MQTT broker, and Keycloak.
+  \item \texttt{hydro-deploy/docker-compose.yml} --- the final overlay, which maps all
+        three network names (\texttt{default}, \texttt{water\_shared\_net},
+        \texttt{tsm\_network}) to the single external network \texttt{hydro-platform-net},
+        injects environment variables, and uses the YAML \texttt{!override} tag to replace
+        development bind-mount volumes with production-ready empty lists.
+\end{enumerate}
+
+In the Podman variant, a parallel set of \texttt{.podman.yml} files generated by
+\texttt{podman\_prep.py} (Section~\ref{sec:arch-deploy-podman}) is used instead.
+
+The startup is staged by \texttt{scripts/start-docker.sh} (or \texttt{start-podman.sh}),
+which brings services up in dependency order: TSM core first (waiting for the database to
+become healthy), then \texttt{postgres-app}, then GeoServer (with a 300-second timeout),
+then the API, and finally the worker, frontend, and optional Cloudflare tunnel.
+
+\subsection{Secrets and Environment Configuration}
+\label{sec:impl-deploy-env}
+
+A single \texttt{.env} file is shared across all three repositories via symbolic links
+created during setup. The \texttt{scripts/generate-secrets.sh} script populates
+cryptographic credentials using Python's \texttt{secrets} module. Three generator functions
+are used: \texttt{hex32()} for 32-byte hex tokens, \texttt{fernet\_key()} for Fernet
+encryption keys (with a fallback to \texttt{base64}-encoded random bytes if the
+\texttt{cryptography} library is unavailable), and \texttt{passphrase()} for 24-character
+alphanumeric strings.
+
+Credentials that must be identical across stacks are managed in synchronisation groups: a
+single generated database password is written to \texttt{DATABASE\_PASSWORD},
+\texttt{TIMEIO\_DB\_PASSWORD}, \texttt{MQTT\_AUTH\_POSTGRES\_PASS}, and several Flyway
+variables simultaneously. The script is safe to re-run: it replaces only values that still
+contain the \texttt{changeme} placeholder.
+
+Environment consistency is verified by the \texttt{scripts/check.sh} health-check script.
+Five \texttt{@sync} variable pairs are validated for equality (e.g.\
+\texttt{DATABASE\_PASSWORD} and \texttt{TIMEIO\_DB\_PASSWORD}). The script also checks all
+containers for health status, probes HTTP endpoints for reachability, and warns about
+remaining \texttt{changeme} placeholders. The derived variables (\texttt{PROXY\_URL},
+\texttt{KEYCLOAK\_URL}, etc.) are computed from \texttt{PUBLIC\_HOSTNAME} and
+\texttt{PUBLIC\_PORT} by the \texttt{make update-env} target using \texttt{sed}
+substitutions.

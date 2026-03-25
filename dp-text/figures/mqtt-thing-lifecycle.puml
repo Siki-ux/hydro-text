@@ -1,0 +1,35 @@
+@startuml mqtt-thing-lifecycle
+!theme plain
+skinparam defaultFontSize 18
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 250
+skinparam sequenceParticipantPadding 15
+skinparam sequenceBoxBorderColor #333333
+
+participant "water-dp\nAPI" as api
+participant "MQTT\nBroker" as mqtt
+participant "configdb-\nupdater" as cdu
+participant "thing-\nsetup" as ts
+participant "PostgreSQL" as db
+participant "MinIO" as minio
+participant "Grafana" as grafana
+participant "FROST" as frost
+
+api -> mqtt : publish **frontend_thing_update**
+mqtt -> cdu : deliver
+cdu -> db : upsert config_db.thing
+cdu -> mqtt : publish **configdb_update**
+mqtt -> ts : deliver
+
+group Infrastructure Provisioning
+  ts -> db : CREATE SCHEMA user_<uuid>
+  ts -> db : CREATE TABLE observation\n(TimescaleDB hypertable)
+  ts -> db : CREATE MQTT user + ACL
+  ts -> db : deploy local STA views
+  ts -> db : GRANT FROST read access
+  ts -> minio : create bucket + policy
+  ts -> grafana : create org + dashboard
+  ts -> frost : write Tomcat context
+end
+
+@enduml

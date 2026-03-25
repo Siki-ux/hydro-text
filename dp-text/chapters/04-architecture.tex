@@ -1,0 +1,597 @@
+\chapter{Architecture Design}
+\label{chap:architecture}
+
+This chapter presents the architecture of the platform that resulted from addressing the gaps
+identified in Chapter~\ref{chap:requirements}. Section~\ref{sec:arch-overview} describes the
+overall system architecture and the rationale for the three-component split.
+Section~\ref{sec:arch-components} defines the responsibility boundaries of each component.
+Section~\ref{sec:arch-database} covers the database design, including the per-thing schema
+pattern and the local STA views layer. Section~\ref{sec:arch-mqtt} describes the MQTT-driven
+event architecture that integrates all workers. Section~\ref{sec:arch-technology} justifies
+the major technology selections. Section~\ref{sec:arch-deployment} describes the deployment
+strategy, including Docker Compose multi-file merging and rootless Podman support.
+
+%% ----------------------------------------------------------------
+\section{Overall System Architecture}
+\label{sec:arch-overview}
+%% ----------------------------------------------------------------
+
+The platform is composed of three repositories with distinct runtime roles, illustrated in
+Figure~\ref{fig:arch-overview}.
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \begin{tikzpicture}[
+    box/.style={draw, thick, minimum width=3.2cm, minimum height=1cm, align=center, font=\small},
+    layer/.style={draw, thick, rounded corners=3pt, inner sep=14pt},
+    arr/.style={-{Stealth[length=5pt]}, thick},
+    lbl/.style={font=\scriptsize, fill=white, inner sep=2pt},
+    every node/.style={font=\small}
+  ]
+
+    %% ═══════════════════════════════════════════════
+    %% LAYOUT: 3 rows, 2cm gap between packages
+    %%   wdp:  x = -0.5 … 6.5   (center 3,   w=7cm)
+    %%   tsm:  x =  8.5 … 15.5  (center 12,  w=7cm)
+    %%   gap:  x =  6.5 … 8.5   (clear channel)
+    %%   data: x =  0.5 … 14.5  (center 7.5, w=14cm)
+    %% ═══════════════════════════════════════════════
+
+    %% ── Researcher ──
+    \node[font=\normalsize\bfseries] (user) at (7.5, 1) {Researcher};
+
+    %% ── water-dp (label above-left, away from arrow landing) ──
+    \node[layer] (wdp) at (3, -3.5) [minimum width=7cm, minimum height=5cm] {};
+    \node[font=\small\bfseries, anchor=south west] at (wdp.north west) {water-dp (application layer)};
+    \node[box] (frontend) at (1.2, -2.2) {Next.js\\Frontend};
+    \node[box] (api)      at (4.8, -2.2) {FastAPI\\Backend};
+    \node[box] (celery)   at (1.2, -3.8) {Celery\\Worker};
+    \node[box] (geo)      at (4.8, -3.8) {GeoServer};
+
+    %% ── tsm-orchestration (label above-left, away from arrow landing) ──
+    \node[layer] (tsm) at (12, -3.5) [minimum width=7cm, minimum height=5cm] {};
+    \node[font=\small\bfseries, anchor=south west] at (tsm.north west)
+      {tsm-orchestration (infrastructure layer)};
+    \node[box] (frost)   at (10.2, -2.2) {FROST-Server};
+    \node[box] (kc)      at (13.8, -2.2) {Keycloak};
+    \node[box] (grafana) at (10.2, -3.8) {Grafana};
+    \node[box] (workers) at (13.8, -3.8) {Ingestion\\Workers};
+    \node[box] (cron)    at (12,   -5.2) {Cron Scheduler};
+
+    %% ── Shared Data Layer ──
+    \node[layer, label={[font=\small\bfseries]north:Shared Data Layer}]
+      (data) at (7.5, -9) [minimum width=14cm, minimum height=2.2cm] {};
+    \node[box] (db)    at (4,   -9) {PostgreSQL +\\TimescaleDB};
+    \node[box] (minio) at (7.5, -9) {MinIO (S3)};
+    \node[box] (mqtt)  at (11,  -9) {Mosquitto\\MQTT Broker};
+
+    %% ── MQTT Device ──
+    \node[font=\normalsize\bfseries, align=center] (device) at (15.5, -9) {MQTT\\Device};
+
+    %% ═══════ ARROWS ═══════
+
+    %% 1. Researcher → water-dp (arrow lands on right side of package top)
+    \draw[arr] (user.south) -- ++(0,-0.3) -| ($(wdp.north east)!0.3!(wdp.north west)$);
+    \node[lbl] at (5.2, 0.5) {HTTPS};
+
+    %% 2. Researcher → tsm (arrow lands on right side of package top)
+    \draw[arr] (user.south) -- ++(0,-0.3) -| ($(tsm.north east)!0.3!(tsm.north west)$);
+    \node[lbl] at (10.5, 0.5) {HTTPS};
+
+    %% 3. Cross-stack: wdp → tsm (horizontal through gap)
+    \draw[arr] (wdp.east) -- node[lbl, above, align=center] {STA REST\\OIDC} (tsm.west);
+
+    %% 4. water-dp → data (straight down)
+    \draw[arr] (wdp.south) -- node[lbl, right] {SQL, S3, MQTT} (wdp.south |- data.north);
+
+    %% 5. tsm → data (straight down)
+    \draw[arr] (tsm.south) -- node[lbl, left] {SQL, S3, MQTT} (tsm.south |- data.north);
+
+    %% 6. MQTT Device → Mosquitto (horizontal)
+    \draw[arr] (device.west) -- node[lbl, above] {MQTT/TLS} (mqtt.east);
+
+  \end{tikzpicture}
+  \caption{High-level architecture of the Hydro Platform.}
+  \label{fig:arch-overview}
+\end{figure}
+\end{landscape}
+
+\textbf{tsm-orchestration} provides the infrastructure layer: a Mosquitto MQTT broker,
+PostgreSQL with TimescaleDB for time-series storage, FROST-Server for OGC SensorThings~API
+access, MinIO for S3-compatible object storage, Keycloak for identity management, Grafana for
+visualisation, and a set of Python-based ingestion workers. This component is a heavily modified
+fork of the upstream UFZ Time.IO platform described in Section~\ref{sec:bg-timeio}.
+
+\textbf{water-dp} provides the application layer: a FastAPI backend, a Next.js frontend portal,
+a Celery worker for background tasks, GeoServer for geospatial layer management, and Redis as
+the Celery message broker. This component owns all application-level concepts --- projects,
+alerts, geospatial layers, sensor activity tracking --- that the upstream TSM platform does not
+provide.
+
+\textbf{hydro-deploy} is a build-time-only orchestrator with no runtime presence. It merges
+the Docker Compose files from both stacks into a single project, manages shared secrets, and
+provides a Makefile-based operator interface. Its purpose is to allow both stacks to be
+deployed and operated as a single unit while preserving each stack's ability to run
+independently.
+
+The three-component split was chosen to maintain a clear boundary between the adapted upstream
+infrastructure and the new application logic. This boundary ensures that upstream TSM updates
+can be merged into the fork without conflicting with application-layer code, and that
+\texttt{water-dp} can be developed and tested against a running TSM instance without modifying
+it. The deployment orchestrator is kept separate so that neither runtime stack depends on it.
+
+At runtime, all services communicate over a single Docker bridge network named
+\texttt{hydro-platform-net}. Each stack defines its own logical network name
+(\texttt{default}, \texttt{water\_shared\_net}, \texttt{tsm\_network}), and the
+\texttt{hydro-deploy} Compose file maps all three names to the same physical network.
+This allows services to address each other by container name regardless of which stack
+defined them. The Nginx reverse proxy in \texttt{tsm-orchestration} serves as the single
+entry point, routing requests to the frontend (\texttt{/}), the API (\texttt{/water-api}),
+FROST-Server (\texttt{/FROST-Server}), Grafana (\texttt{/grafana}), GeoServer
+(\texttt{/geoserver}), and Keycloak (\texttt{/keycloak}).
+
+%% ----------------------------------------------------------------
+\section{Component Responsibilities and Boundaries}
+\label{sec:arch-components}
+%% ----------------------------------------------------------------
+
+Each component owns a well-defined set of responsibilities. The boundaries are enforced by
+the repository structure and the communication protocols: \texttt{water-dp} never writes
+directly to TSM-owned database tables, and TSM workers are unaware of application-level
+concepts such as projects or alerts.
+
+\subsection{\texttt{tsm-orchestration}}
+\label{sec:arch-components-tsm}
+
+The TSM stack owns the following responsibilities:
+
+\begin{itemize}
+  \item \textbf{Raw time-series storage.} Per-thing PostgreSQL schemas with TimescaleDB
+        hypertables for observation data.
+  \item \textbf{Infrastructure provisioning.} The thing-setup worker creates schemas,
+        MinIO buckets, MQTT credentials, Grafana dashboards, and FROST-Server context
+        files when a new Thing is registered.
+  \item \textbf{Data ingestion.} Workers for MQTT real-time ingestion, file-based
+        ingestion (CSV, JSON), external API synchronisation, and SFTP polling.
+  \item \textbf{Quality control.} The run-qaqc worker applies automated QC tests and
+        stores quality flags alongside observations.
+  \item \textbf{Standards-compliant access.} FROST-Server exposes all observation data
+        through the OGC SensorThings~API using the local SQL views described in
+        Section~\ref{sec:arch-db-staviews}.
+  \item \textbf{Authentication infrastructure.} Keycloak provides OIDC-based identity
+        management for both stacks.
+\end{itemize}
+
+\subsection{\texttt{water-dp}}
+\label{sec:arch-components-waterdp}
+
+The water-dp stack owns all application-level features that were absent from the upstream
+TSM platform:
+
+\begin{itemize}
+  \item \textbf{Project-oriented data model.} Projects group Things, members, and
+        geospatial layers. Members are assigned per-project roles (owner, editor, viewer).
+  \item \textbf{Sensor management portal.} The Next.js frontend provides CRUD operations
+        for Things, Datastreams, parser configurations, and MQTT device types through
+        the FastAPI backend, which proxies the operations to the TSM configuration
+        database and FROST-Server.
+  \item \textbf{Alert evaluation.} Alert definitions specify threshold, no-data, and
+        QA/QC-based rules. The Celery worker evaluates QA/QC alerts in response to MQTT
+        events and checks sensor inactivity on a periodic schedule.
+  \item \textbf{Geospatial layer management.} GeoServer publishes PostGIS-backed layers
+        as WMS and WFS services. The API manages workspaces, datastores, and layer
+        publishing through the GeoServer REST~API.
+  \item \textbf{Batch import.} CSV files with historical observation data are uploaded
+        through the API and processed asynchronously by the Celery worker.
+  \item \textbf{Sensor simulation.} A simulated sensor feature generates synthetic
+        observation data at configurable intervals, enabling testing without physical
+        hardware.
+\end{itemize}
+
+\subsection{\texttt{hydro-deploy}}
+\label{sec:arch-components-hydrodeploy}
+
+The deployment orchestrator owns no runtime services. Its responsibilities are:
+
+\begin{itemize}
+  \item \textbf{Repository assembly.} The \texttt{make~setup} target clones both
+        runtime repositories and creates the shared \texttt{.env} file.
+  \item \textbf{Secret management.} The \texttt{generate-secrets.sh} script generates
+        cryptographically secure passwords and ensures that shared credentials
+        (database passwords, MQTT passwords, Keycloak admin credentials) are consistent
+        across stacks. Variables that must match are annotated with \texttt{@sync} markers.
+  \item \textbf{Compose file merging.} The Makefile assembles four Docker Compose files
+        into a single project using the \texttt{-f} flag, as described in
+        Section~\ref{sec:arch-deployment}.
+  \item \textbf{Podman support.} A Python preprocessing script transforms the Compose
+        files to work with rootless Podman, added by the author for quick local
+        deployment on a server without Docker daemon support.
+\end{itemize}
+
+%% ----------------------------------------------------------------
+\section{Database Design}
+\label{sec:arch-database}
+%% ----------------------------------------------------------------
+
+The platform supports two database deployment variants. In the integrated deployment managed
+by \texttt{hydro-deploy}, both stacks share a single PostgreSQL instance with schema-level
+isolation. In standalone mode, each stack runs its own database server. This section describes
+the shared variant, which is the primary deployment target.
+
+\subsection{Schema Organisation}
+\label{sec:arch-db-shared}
+
+The shared PostgreSQL instance contains three categories of schemas:
+
+\begin{description}
+  \item[config\_db schema] Owned by TSM. Stores the configuration database tables that
+    drive the ingestion pipeline: \texttt{thing} (sensor definitions), \texttt{project}
+    (logical groupings), \texttt{database} (per-project connection credentials),
+    \texttt{s3\_store} (MinIO bucket configuration), \texttt{file\_parser} and
+    \texttt{file\_parser\_type} (parser definitions), \texttt{mqtt} and
+    \texttt{mqtt\_device\_type} (MQTT device configurations), and \texttt{ext\_api} and
+    \texttt{ext\_sftp} (external data source definitions). The mapping between a Thing's
+    UUID and its schema name is stored in \texttt{public.schema\_thing\_mapping}.
+
+  \item[Per-thing schemas] Owned by TSM. Each onboarded Thing receives a dedicated schema
+    (e.g.\ \texttt{user\_abc123}) containing its own \texttt{thing}, \texttt{datastream},
+    \texttt{observation}, and \texttt{location} tables. The provisioning process is
+    described in Section~\ref{sec:arch-db-perthings}.
+
+  \item[water\_dp schema] Owned by \texttt{water-dp}. Stores application-state tables
+    managed by Alembic migrations. The key tables are \texttt{projects} (project
+    definitions with Keycloak group linkage), \texttt{project\_sensors} (Thing-to-project
+    associations), \texttt{project\_members} (per-project RBAC with owner/editor/viewer
+    roles), \texttt{alert\_definitions} and \texttt{alerts} (the alert evaluation
+    subsystem), \texttt{geo\_layers} and \texttt{geo\_features} (geospatial data with
+    PostGIS geometry columns), \texttt{simulations} (sensor simulation configuration),
+    and \texttt{sensor\_activity\_configs} (inactivity monitoring).
+\end{description}
+
+The \texttt{water-dp} API connects to the shared database with
+\texttt{search\_path=water\_dp,public}, which allows it to read TSM configuration tables
+in the \texttt{config\_db} schema through explicit schema-qualified queries while defaulting
+to the \texttt{water\_dp} schema for its own tables.
+
+\subsection{Standalone Deployment Variant}
+\label{sec:arch-db-standalone}
+
+When \texttt{water-dp} is deployed without \texttt{tsm-orchestration}, it starts its own
+PostgreSQL instance (\texttt{postgres-app}) with PostGIS. In this mode, the FROST~API client
+communicates with an external TSM deployment over HTTP rather than accessing per-thing schemas
+directly. The TSM integration overlay (\texttt{docker-compose.tsm.yml}) disables the standalone
+database by setting its profile to \texttt{donotstart} and redirects the API's
+\texttt{DATABASE\_URL} to the TSM PostgreSQL instance.
+
+\subsection{Per-Thing Schema Provisioning}
+\label{sec:arch-db-perthings}
+
+When a new Thing is registered, the thing-setup worker creates a dedicated PostgreSQL schema.
+The provisioning sequence is:
+
+\begin{enumerate}
+  \item Create a PostgreSQL role with login credentials and a schema owned by that role.
+  \item Create the \texttt{observation} table and convert it to a TimescaleDB hypertable
+        with time-based chunking. TimescaleDB automatically partitions observations into
+        time-range chunks, enabling efficient range queries and background compression
+        of older data.
+  \item Create the \texttt{datastream}, \texttt{thing}, and \texttt{location} tables.
+  \item Deploy the local STA views (Section~\ref{sec:arch-db-staviews}) into the schema.
+  \item Grant the FROST-Server database role read access to all views and tables.
+\end{enumerate}
+
+This per-thing isolation guarantees that one sensor's data volume or query load does not
+affect another, and it simplifies access-control policies at the database level. The mapping
+between a Thing's UUID and its schema name is recorded in
+\texttt{public.schema\_thing\_mapping}.
+
+\subsection{Local STA Views}
+\label{sec:arch-db-staviews}
+
+FROST-Server reads its entity data from PostgreSQL views rather than from a fixed table layout.
+The upstream TSM platform defines these views against tables managed by the external SMS
+service, which was non-functional (Section~\ref{sec:bg-timeio-limitations}). As part of this
+thesis, an alternative set of nine local views was introduced in
+\texttt{src/sql/sta\_views\_local/}, one per STA entity type: \texttt{THINGS},
+\texttt{DATASTREAMS}, \texttt{OBSERVATIONS}, \texttt{LOCATIONS}, \texttt{THINGS\_LOCATIONS},
+\texttt{SENSORS}, \texttt{OBSERVED\_PROPERTIES}, \texttt{FEATURES\_OF\_INTEREST}, and
+\texttt{HISTORICAL\_LOCATIONS}.
+
+The views for \texttt{THINGS}, \texttt{DATASTREAMS}, \texttt{OBSERVATIONS}, and
+\texttt{LOCATIONS} derive their data from the per-thing schema tables and the configuration
+database. For example, the \texttt{DATASTREAMS} view extracts unit-of-measurement metadata
+from the JSONB \texttt{properties} column and constructs the STA-compliant JSON structure
+that FROST expects. The remaining four entity types (\texttt{SENSORS},
+\texttt{OBSERVED\_PROPERTIES}, \texttt{FEATURES\_OF\_INTEREST},
+\texttt{HISTORICAL\_LOCATIONS}) have no local equivalent and are provided as empty stub
+views so that FROST-Server starts without errors.
+
+A runtime toggle (\texttt{USE\_LOCAL\_STA\_VIEWS}, defaulting to \texttt{true}) controls
+which view set is deployed during Thing provisioning. All code related to this workaround
+is marked with the label \texttt{TSM-TEMP} in the codebase.
+
+%% ----------------------------------------------------------------
+\section{MQTT-Driven Event Architecture}
+\label{sec:arch-mqtt}
+%% ----------------------------------------------------------------
+
+The Mosquitto MQTT broker serves as the primary integration backbone between all TSM workers
+and the \texttt{water-dp} Celery worker. All workers follow a message-driven architecture:
+each subscribes to one or more topics, performs its designated processing, and optionally
+publishes results to downstream topics. This design decouples the components and enables
+independent scaling.
+
+\subsection{Topic Structure and Event Flow}
+\label{sec:arch-mqtt-topics}
+
+Table~\ref{tab:mqtt-topics} lists the MQTT topics and the workers that produce and consume
+them. The Thing creation lifecycle is illustrated in Figure~\ref{fig:mqtt-thing-lifecycle},
+and the data ingestion event flow is shown in Figure~\ref{fig:mqtt-data-ingestion}.
+
+\begin{longtable}{p{0.30\textwidth} p{0.30\textwidth} p{0.30\textwidth}}
+  \caption{MQTT topics and their producers and consumers.}
+  \label{tab:mqtt-topics} \\
+  \textbf{Topic} & \textbf{Producer} & \textbf{Consumer} \\
+  \hline
+  \endfirsthead
+  \textbf{Topic} & \textbf{Producer} & \textbf{Consumer} \\
+  \hline
+  \endhead
+  \texttt{frontend\_thing\_update}
+    & water-dp API
+    & configdb-updater \\[4pt]
+  \texttt{configdb\_update}
+    & configdb-updater
+    & thing-setup \\[4pt]
+  \texttt{mqtt\_ingest/\{user\}/\#}
+    & MQTT devices
+    & mqtt-ingest \\[4pt]
+  \texttt{object\_storage\_notification}
+    & MinIO (S3 events)
+    & file-ingest \\[4pt]
+  \texttt{data\_parsed}
+    & file-ingest, mqtt-ingest, sync-extapi
+    & run-qaqc, water-dp worker \\[4pt]
+  \texttt{qaqc\_done}
+    & run-qaqc
+    & water-dp worker \\[4pt]
+  \texttt{sync\_ext\_apis}
+    & cron scheduler
+    & sync-extapi \\[4pt]
+  \texttt{sync\_ext\_sftp}
+    & cron scheduler
+    & sync-extsftp \\[4pt]
+  \texttt{userinfo\_keycloak}
+    & Keycloak (login event)
+    & grafana-user-orgs \\[4pt]
+  \texttt{monitor\_mqtt}
+    & cron scheduler
+    & monitor-mqtt \\
+\end{longtable}
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=\linewidth,height=0.85\textheight,keepaspectratio]{figures/mqtt-thing-lifecycle.pdf}
+  \caption{Sequence diagram: Thing creation lifecycle.}
+  \label{fig:mqtt-thing-lifecycle}
+\end{figure}
+\end{landscape}
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \includegraphics[width=\linewidth,height=0.85\textheight,keepaspectratio]{figures/mqtt-data-ingestion.pdf}
+  \caption{Sequence diagram: data ingestion event flow.}
+  \label{fig:mqtt-data-ingestion}
+\end{figure}
+\end{landscape}
+
+\subsection{Thing Lifecycle}
+\label{sec:arch-mqtt-lifecycle}
+
+When a Thing is created or modified through the \texttt{water-dp} portal, the API publishes a
+configuration message to the \texttt{frontend\_thing\_update} topic. The configdb-updater
+worker receives the message, validates the content version, and upserts the configuration into
+the \texttt{config\_db} schema. Upon successful storage, it publishes a notification to
+\texttt{configdb\_update}, which triggers the thing-setup worker. The thing-setup worker
+executes the six-step provisioning sequence described in Section~\ref{sec:arch-db-perthings},
+plus MQTT credential creation, MinIO bucket provisioning, and Grafana dashboard setup. This
+chain ensures that after a Thing is created through the portal, its entire infrastructure is
+provisioned automatically without manual intervention.
+
+\subsection{Alert Evaluation}
+\label{sec:arch-mqtt-alerts}
+
+The \texttt{water-dp} Celery worker subscribes to two MQTT topics to integrate with the TSM
+event flow:
+
+\begin{itemize}
+  \item \textbf{\texttt{qaqc\_done}} --- triggers evaluation of QA/QC alert rules for the
+        affected Thing. When the run-qaqc worker finishes processing quality flags, the
+        alert evaluator queries the observation table for the flagged-to-total ratio within
+        a configurable time window. If the ratio exceeds the threshold defined in the alert
+        rule, an alert is created with status \texttt{active}.
+  \item \textbf{\texttt{data\_parsed}} --- triggers sensor activity recording. The worker
+        updates the \texttt{last\_seen\_at} timestamp for the affected Thing, which is
+        used by the inactivity monitoring subsystem.
+\end{itemize}
+
+The MQTT subscription runs as a daemon thread inside the Celery worker process, started on the
+\texttt{worker\_ready} signal. When a message arrives, the handler dispatches a Celery task
+for asynchronous processing, ensuring that the MQTT callback does not block.
+
+Sensor inactivity checks remain on a periodic Celery Beat schedule (every 30~minutes). This
+hybrid approach --- event-driven for QA/QC alerts, periodic for inactivity --- was chosen
+because inactivity is defined by the \emph{absence} of events, which cannot be detected by
+subscribing to a topic.
+
+The alert state machine defines three states: \texttt{active} (rule violation detected),
+\texttt{acknowledged} (a user has seen the alert, stored with the acknowledger's identity
+and timestamp), and \texttt{resolved} (the condition no longer holds or was manually
+resolved). QA/QC alerts are automatically resolved when the flagged ratio drops below
+the threshold. Inactivity alerts are resolved when the sensor sends new data.
+
+%% ----------------------------------------------------------------
+\section{Technology Selection Justifications}
+\label{sec:arch-technology}
+%% ----------------------------------------------------------------
+
+Technology selections were driven by the requirements identified in Chapter~\ref{chap:requirements}
+and by maintainability considerations given the expected lifetime of the platform. This section
+explains the rationale for each major choice.
+
+\subsection{Backend: FastAPI}
+\label{sec:arch-tech-fastapi}
+
+FastAPI~\parencite{fastapi-ref} was selected for the \texttt{water-dp} backend over Flask and Django. FastAPI provides
+native \texttt{async}/\texttt{await} support, which is necessary for non-blocking database
+queries (via SQLAlchemy~2.0 async sessions) and concurrent HTTP calls to FROST-Server and
+GeoServer. It generates OpenAPI documentation automatically from Pydantic request and response
+schemas, eliminating the need to maintain a separate API specification. Flask lacks built-in
+async support and would require additional libraries for request validation. Django was
+considered too heavy for a service that acts primarily as an API layer and does not use Django's
+ORM, template engine, or admin interface.
+
+\subsection{Frontend: Next.js~15}
+\label{sec:arch-tech-nextjs}
+
+Next.js~15~\parencite{nextjs-ref} with the App Router was selected for the frontend portal. React Server
+Components and server-side rendering enable authentication-protected routes to be rendered on
+the server, preventing unauthenticated users from receiving page content. The file-based
+routing convention reduces boilerplate, and built-in internationalisation support simplifies
+the multilingual requirement (FR-25). A plain React single-page application would require a
+separate server for SSR and manual route configuration. Vue.js was considered but its ecosystem
+for complex applications with SSR, authentication middleware, and internationalisation was less
+mature at the time of technology selection.
+
+\subsection{Time-Series Storage: TimescaleDB}
+\label{sec:arch-tech-timescaledb}
+
+TimescaleDB~\parencite{timescaledb-ref} was selected over InfluxDB for time-series storage. TimescaleDB is a PostgreSQL
+extension, meaning it runs on the same database server that already hosts the TSM configuration
+database and the \texttt{water-dp} application schema. This eliminates the operational
+complexity of running and maintaining a separate database system. TimescaleDB provides
+automatic time-based chunking of hypertables, native compression for older chunks, and full
+SQL compatibility --- observations can be queried with standard SQL joins against configuration
+tables without a gateway or translation layer. InfluxDB would have required a separate
+deployment, a different query language (InfluxQL or Flux), and a synchronisation mechanism
+between the two databases.
+
+\subsection{Geospatial Layer: GeoServer}
+\label{sec:arch-tech-geoserver}
+
+GeoServer~\parencite{geoserver-ref} was selected for geospatial layer management because it provides standards-compliant
+OGC Web Map Service (WMS) and Web Feature Service (WFS) interfaces over PostGIS data. This
+aligns with the platform's overall philosophy of using OGC standards for interoperability.
+GeoServer is widely used in research institutions and supports workspaces, datastores, and
+layer publishing through a REST~API, which the \texttt{water-dp} backend uses for programmatic
+layer management. The platform stores geospatial features in PostGIS geometry columns (SRID
+4326) and publishes them through GeoServer to the frontend, which renders them using
+MapLibre~GL.
+
+\subsection{Authentication: Keycloak}
+\label{sec:arch-tech-keycloak}
+
+Keycloak~\parencite{keycloak-ref} was retained from the upstream TSM stack. It provides a battle-tested OIDC
+implementation with realm and client management, group-based access control, and integration
+with external identity providers. The platform uses a two-tier RBAC model: Keycloak realm
+roles define platform-wide privileges (e.g.\ administrator), while the \texttt{project\_members}
+table in the \texttt{water\_dp} schema defines per-project roles. Keycloak groups are linked to
+projects through the \texttt{authorization\_provider\_group\_id} column, enabling group
+membership to control project access without duplicating user management. The API validates
+JWT tokens by fetching the JSON Web Key Set (JWKS) from the Keycloak endpoint and verifying
+RS256 signatures.
+
+\subsection{Object Storage: MinIO}
+\label{sec:arch-tech-minio}
+
+MinIO~\parencite{minio-ref} was retained from the upstream TSM stack. It provides S3-compatible object storage
+without cloud service dependencies, which is important for on-premise deployments at research
+institutions. Each Thing receives its own MinIO bucket for raw data files. MinIO publishes
+S3~event notifications to MQTT when files are uploaded, triggering the file-ingest worker
+automatically. MinIO also serves as the storage backend for user-uploaded parser scripts and
+external API syncer scripts used by the dynamic parser loading mechanism described in
+Section~\ref{sec:bg-timeio-parsers}.
+
+%% ----------------------------------------------------------------
+\section{Deployment Strategy}
+\label{sec:arch-deployment}
+%% ----------------------------------------------------------------
+
+The deployment is managed by \texttt{hydro-deploy}, which assembles the runtime stacks from
+multiple Docker Compose files and provides a Makefile-based operator interface. This section
+describes the Compose file merging strategy, secret management, and Makefile targets.
+Rootless Podman is also supported as an alternative container runtime.
+
+\subsection{Compose File Merging}
+\label{sec:arch-deploy-compose}
+
+Docker Compose supports layering multiple \texttt{-f} files, where later files override or
+extend services defined in earlier ones. The platform uses four Compose files in Docker mode:
+
+\begin{enumerate}
+  \item \texttt{tsm-orchestration/docker-compose.yml} --- defines all TSM core services
+        (database, MQTT broker, FROST-Server, MinIO, Keycloak, Grafana, Nginx proxy,
+        all ingestion workers, and the cron scheduler).
+  \item \texttt{water-dp/docker-compose.yml} --- defines the standalone \texttt{water-dp}
+        services (PostgreSQL with PostGIS, Redis, FastAPI API, GeoServer, Celery worker,
+        Next.js frontend).
+  \item \texttt{water-dp/docker-compose.tsm.yml} --- the TSM integration overlay. Disables
+        the standalone PostgreSQL by setting its profile to \texttt{donotstart}, redirects
+        the API and worker \texttt{DATABASE\_URL} to the TSM database, and adds MinIO
+        and FROST connection parameters.
+  \item \texttt{hydro-deploy/docker-compose.yml} --- the final layer. Maps all logical
+        network names to the physical \texttt{hydro-platform-net} bridge network, applies
+        startup ordering constraints, and adjusts environment variables.
+\end{enumerate}
+
+An optional fifth file (\texttt{docker-compose.tunnel.yml}) adds a Cloudflare Tunnel
+container for exposing the platform to the internet without a public IP address.
+
+\subsection{Secret Management}
+\label{sec:arch-deploy-secrets}
+
+A single \texttt{.env} file at the \texttt{hydro-deploy} root contains all credentials for
+both stacks. The \texttt{generate-secrets.sh} script generates cryptographically secure values
+using Python's \texttt{secrets} module. Passwords that must be identical across stacks (e.g.\
+the database password used by both TSM services and the \texttt{water-dp} API) are generated
+once and written to all corresponding variables. These pairs are annotated with \texttt{@sync}
+comments in the script. The script is idempotent: it replaces only placeholder values
+(\texttt{changeme} or empty strings) and never overwrites previously generated secrets.
+
+\subsection{Makefile Operator Interface}
+\label{sec:arch-deploy-makefile}
+
+The \texttt{hydro-deploy} Makefile exposes the following primary targets:
+
+\begin{description}
+  \item[make setup] Clones the \texttt{tsm-orchestration} and \texttt{water-dp} repositories,
+    creates the \texttt{.env} file from the template, and establishes symlinks for shared
+    configuration.
+  \item[make secrets] Runs \texttt{generate-secrets.sh} to populate the \texttt{.env} file
+    with cryptographically secure passwords.
+  \item[make build] Builds locally compiled Docker images (Keycloak themes, \texttt{water-dp}
+    API and frontend).
+  \item[make up] Creates the \texttt{hydro-platform-net} network, then starts all services
+    in a staged order: TSM core services first, then the GeoServer database, then
+    GeoServer, and finally the \texttt{water-dp} API, worker, and frontend.
+  \item[make migrate] Applies pending Alembic database migrations for the \texttt{water\_dp}
+    schema.
+  \item[make seed] Populates the platform with test sensors and projects.
+  \item[make check] Health-checks all service endpoints and validates that \texttt{@sync}
+    credential pairs are consistent.
+\end{description}
+
+\subsection{Podman Rootless Support}
+\label{sec:arch-deploy-podman}
+
+The platform also supports rootless Podman for environments where the Docker daemon is
+unavailable. A preprocessing script (\texttt{podman\_prep.py}) transforms the standard
+Compose files into Podman-compatible variants by applying seven automated transformations:
+removing unsupported profile declarations, stripping incompatible \texttt{depends\_on}
+conditions, converting YAML booleans and environment variable formats, absolutising
+relative paths, and removing \texttt{tmpfs} UID/GID options rejected by rootless
+\texttt{crun}. A hand-maintained overlay handles GeoServer UID mapping and network
+pre-creation. The Makefile auto-detects the available container engine.

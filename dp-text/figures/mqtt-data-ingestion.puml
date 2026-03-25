@@ -1,0 +1,44 @@
+@startuml mqtt-data-ingestion
+!theme plain
+skinparam defaultFontSize 18
+skinparam sequenceMessageAlign center
+skinparam maxMessageSize 250
+skinparam sequenceParticipantPadding 15
+skinparam sequenceBoxBorderColor #333333
+
+participant "Sensor /\nFile Upload" as src
+participant "MQTT Broker\n/ MinIO" as entry
+participant "Ingest\nWorker" as ingest
+participant "PostgreSQL" as db
+participant "run-qaqc" as qaqc
+participant "water-dp\nWorker" as wdp
+
+== MQTT Device Ingestion ==
+
+src -> entry : MQTT payload\n**mqtt_ingest/{user}/data**
+entry -> ingest : deliver to mqtt-ingest
+ingest -> db : parse, upsert observations
+ingest -> entry : publish **data_parsed**
+
+== File-Based Ingestion ==
+
+src -> entry : upload CSV to MinIO
+entry -> ingest : S3 event\n**object_storage_notification**
+ingest -> db : parse, upsert observations
+ingest -> entry : publish **data_parsed**
+
+== Quality Control & Alerts ==
+
+entry -> qaqc : deliver **data_parsed**
+qaqc -> db : run QC tests, store flags
+qaqc -> entry : publish **qaqc_done**
+entry -> wdp : deliver **qaqc_done**
+wdp -> db : evaluate alert rules
+
+note over entry
+  **data_parsed** also triggers
+  sensor activity recording
+  in water-dp Worker
+end note
+
+@enduml

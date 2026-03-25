@@ -1,0 +1,115 @@
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+This thesis designed and implemented a platform for real-time environmental sensor data
+collection, integration, and visualisation, building on the UFZ Time.IO solution as a
+foundation and extending it to meet the operational requirements of Czech University of
+Life Sciences Prague within the context of the European eLTER research infrastructure.
+
+\medskip\noindent
+The primary contributions of this work are:
+
+\begin{enumerate}
+  \item \textbf{TSM Orchestration Adaptation.}
+        A working adaptation of the UFZ \texttt{tsm-orchestration} stack with local STA views
+        implementing the missing FROST compatibility layer, modular Docker~Compose structure
+        enabling overlay-based configuration, and Podman rootless support enabling deployment
+        on security-constrained infrastructure.
+
+  \item \textbf{The \texttt{water-dp} Platform.}
+        A new application layer providing project-oriented sensor management, MQTT-driven
+        alert evaluation, geospatial layer integration via GeoServer, and a multilingual web
+        portal in English, Czech, and Slovak.
+
+  \item \textbf{The \texttt{hydro-deploy} Deployment Layer.}
+        A unified deployment orchestrator that merges the two stacks via Docker~Compose
+        multi-file merge, manages secrets, validates cross-stack configuration consistency,
+        and provides a scripted operator interface via a Makefile.
+\end{enumerate}
+
+The design decision that most significantly shaped the outcome was the choice to keep
+\texttt{tsm-orchestration} and \texttt{water-dp} as separately deployable stacks rather than
+merging them into a monolithic codebase. This separation preserved the ability to incorporate
+upstream TSM updates while allowing the application layer to evolve independently. The
+experience of this thesis, however, demonstrated that the upstream Time.IO project was not
+responsive to the needs of external adopters: the SMS service remained non-functional, the
+frontends produced invalid MQTT messages, and integration-layer documentation was absent. The
+\texttt{water-dp} layer was built precisely to compensate for these deficiencies.
+
+\section*{Limitations}
+\addcontentsline{toc}{section}{Limitations}
+
+The most significant limitation is the continued reliance on the \texttt{TSM-TEMP}
+workarounds. The 19~marked locations in \texttt{tsm-orchestration} bypass the non-functional
+upstream SMS service with local PostgreSQL views. While these views are operationally sound
+(Section~\ref{sec:impl-tsm-assessment}), they carry the label of temporary fixes against a
+codebase whose upstream shows no indication of addressing the root cause.
+
+Test coverage of the \texttt{water-dp} backend, while comprehensive for the core service
+layer (797~tests; Section~\ref{sec:test-approach-backend}), has gaps in the FROST client integration
+(14\% coverage for \texttt{async\_frost\_client}) and the SMS service adapter (14\%). These
+modules depend heavily on external services that are difficult to test without a running
+FROST-Server and Keycloak instance.
+
+Performance has not been benchmarked at scale beyond the CZU sensor fleet. The primary
+bottleneck identified --- synchronous FROST-Server query processing
+(Section~\ref{sec:test-perf-bottleneck}) --- would become critical at deployments with
+thousands of Things. Quantitative throughput measurements under realistic multi-site load
+remain future work.
+
+Finally, the platform is not yet eLTER-ready. The architectural foundations are aligned
+(OGC~STA data access, OIDC authentication, containerised deployment), but the
+eLTER-specific requirements identified in Section~\ref{sec:test-deployment-elter} ---
+metadata schemas, cross-site federation, vocabulary alignment, and FAIR compliance ---
+represent substantial development effort beyond the scope of this thesis.
+
+\section*{Future Work}
+\addcontentsline{toc}{section}{Future Work}
+
+The findings of this thesis point toward a clear direction for future development: rather
+than continuing to patch the upstream Time.IO codebase through workarounds, the more
+sustainable path is to take the \emph{architectural ideas} of Time.IO --- per-Thing schema
+isolation, MQTT-driven worker pipelines, OGC~STA as the interoperability standard --- and
+rewrite the problematic components from scratch, purpose-built for eLTER adoption.
+
+The concrete future work items are:
+
+\begin{enumerate}
+  \item \textbf{TSM component rewrite.} Replace the \texttt{TSM-TEMP} workarounds
+        and the non-functional SMS service with a clean STA view layer that is maintained
+        as part of the platform rather than labelled as temporary. The rewrite scope is
+        well-defined: 19~marked locations in one Python module and one SQL directory.
+
+  \item \textbf{eLTER metadata integration.} Extend the project and sensor models
+        with eLTER-specific metadata (DEIMS-SDR identifiers, EnvThes vocabulary bindings,
+        habitat classifications) to enable the platform to serve as an eLTER site node.
+
+  \item \textbf{Cross-site federation.} Implement a federation layer for aggregated
+        queries across independently operated platform instances --- a prerequisite for
+        eLTER's distributed, multi-site architecture.
+
+  \item \textbf{FAIR data compliance.} Add persistent identifiers (DOIs), structured
+        provenance records, and machine-readable licensing metadata to support the FAIR
+        data principles mandated by eLTER.
+
+  \item \textbf{Performance optimisation.} Introduce a caching layer (Redis) for
+        frequently accessed FROST metadata, evaluate FROST-Server alternatives or
+        clustering, and conduct load testing at scale beyond the CZU sensor fleet.
+
+  \item \textbf{Test coverage completion.} Extend the automated test suite to cover the
+        FROST client integration and SMS service adapter, potentially using
+        containerised test fixtures (Testcontainers) for FROST-Server and Keycloak.
+\end{enumerate}
+
+\medskip\noindent
+The OGC SensorThings API proved to be a well-chosen interoperability standard for this class
+of environmental monitoring platform. Its entity model maps naturally onto the sensor data
+management domain, and the availability of the FROST-Server implementation reduced the
+initial integration effort. The primary friction was not with the standard itself but with
+the state of the upstream implementation layer that was intended to bridge it to operational
+sensor networks. The experience of this thesis suggests that the concept behind Time.IO ---
+a modular, MQTT-driven, STA-compliant sensor data platform --- is sound, but a purpose-built
+implementation targeting eLTER's specific requirements would be more effective than continued
+adaptation of an upstream codebase that does not prioritise external adopters.
+the per-thing schema model to FROST --- a gap that motivated the local STA views approach and that remains the
+most important open item for future development.
