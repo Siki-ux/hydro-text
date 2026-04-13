@@ -35,16 +35,46 @@
     advisor     = {RNDr. Tomáš Rebok, Ph.D.},
     title       = {Design and Implementation of a Platform for Real-Time Environmental Sensor Data Collection, Integration, and Visualisation},
     TeXtitle    = {Design and Implementation of a Platform for Real-Time Environmental Sensor Data Collection, Integration, and Visualisation},
-    keywords    = {sensor data, environmental monitoring, IoT, MQTT, OGC SensorThings API, FastAPI, Next.js, TimescaleDB, Keycloak},
-    TeXkeywords = {sensor data, environmental monitoring, IoT, MQTT, OGC SensorThings API, FastAPI, Next.js, TimescaleDB, Keycloak},
+    keywords    = {sensor data, environmental monitoring, OGC SensorThings API, MQTT, TimescaleDB, FastAPI, Next.js, Docker, eLTER},
+    TeXkeywords = {sensor data, environmental monitoring, OGC SensorThings~API, MQTT, TimescaleDB, FastAPI, Next.js, Docker, eLTER},
     abstract    = {%
-      % TODO: Write the abstract (150--250 words).
-      This thesis designs and implements a platform for real-time environmental sensor data collection,
-      integration, and visualisation, targeting the operational needs of Czech University of Life Sciences
-      Prague (CZU) within the context of the European eLTER long-term ecosystem research infrastructure.
-      The work builds on the UFZ Time.IO solution as a foundation, addresses its identified limitations,
-      and contributes the \texttt{water-dp} application layer and the \texttt{hydro-deploy} unified
-      deployment orchestrator. TODO: complete this abstract.
+      This thesis designs and implements a platform for real-time environmental sensor data
+      collection, integration, and visualisation, targeting the operational needs of Czech
+      University of Life Sciences Prague (CZU) within the European eLTER long-term ecosystem
+      research infrastructure. The platform builds on the UFZ Time.IO open-source solution,
+      which provides MQTT-driven ingestion workers, per-sensor PostgreSQL/TimescaleDB schema
+      isolation, and OGC SensorThings API access via FROST-Server. A gap analysis reveals that
+      Time.IO lacks project-oriented data management, a user-facing portal, an alert system,
+      geospatial layer support, and a functional sensor management service. To address these
+      gaps, the thesis contributes three components: (1)~a targeted adaptation of the
+      \texttt{tsm-orchestration} stack with local STA views replacing the non-functional
+      upstream SMS service, modular Compose structure, and Podman rootless support;
+      (2)~\texttt{water-dp}, a new application layer built with FastAPI and Next.js~15 that
+      provides project-based sensor management, MQTT-triggered alert evaluation, GeoServer
+      integration, and a multilingual web portal; and (3)~\texttt{hydro-deploy}, a unified
+      deployment orchestrator merging both stacks via a single configuration file and
+      Makefile-based operator interface. The platform is validated through 1,024 automated
+      tests and a requirements evaluation covering 24~functional and 8~non-functional
+      requirements. The thesis concludes that while the architectural ideas behind
+      Time.IO --- per-Thing isolation, MQTT event pipelines, and OGC~STA compliance --- are
+      sound, a purpose-built rewrite targeting eLTER-specific requirements is the more
+      sustainable path forward than continued adaptation of the upstream codebase.
+    },
+    declaration = {%
+      Hereby I declare that this paper is my original authorial work,
+      which I have worked out on my own. All sources, references, and
+      literature used or excerpted during elaboration of this work are
+      properly cited and listed in complete reference to the due source.
+
+      \medskip
+
+      During the preparation of this thesis, the following AI-based tools
+      were used in a supportive capacity: GitHub Copilot for code completion
+      suggestions during development, Grammarly for grammar and style
+      corrections, and Claude for consultations and suggestions. All design
+      decisions, implementation, analysis, and written content are my own
+      work. I have reviewed and take full responsibility for the final form
+      and correctness of the entire thesis.
     },
     thanks      = {%
       % TODO: Write acknowledgements.
