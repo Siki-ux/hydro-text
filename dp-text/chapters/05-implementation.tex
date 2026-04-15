@@ -1,9 +1,9 @@
 \chapter{Implementation}
 \label{chap:implementation}
 
-This chapter describes the implementation of the three platform components. Section~\ref{sec:impl-tsm} covers the
-adaptations made to the \texttt{tsm-orchestration} stack. Section~\ref{sec:impl-backend} describes the
-\texttt{water-dp} backend. Section~\ref{sec:impl-frontend} covers the frontend portal. Section~\ref{sec:impl-deploy}
+The three platform components are described in turn below. Section~\ref{sec:impl-tsm} covers the
+adaptations to \texttt{tsm-orchestration}. The \texttt{water-dp} backend and frontend are treated in
+Sections~\ref{sec:impl-backend} and~\ref{sec:impl-frontend}. Section~\ref{sec:impl-deploy}
 documents the \texttt{hydro-deploy} unified deployment layer.
 
 %% ----------------------------------------------------------------
@@ -51,10 +51,10 @@ and setting \texttt{USE\_LOCAL\_STA\_VIEWS=false}. At runtime, the thing-setup w
 this environment variable (defaulting to \texttt{true}) and deploys the local or upstream
 view set accordingly during schema provisioning.
 
-\subsection{Compose Modularisation}
+\subsection{Compose Modularization}
 \label{sec:impl-tsm-compose}
 
-To enable \texttt{water-dp} to run alongside TSM without modifying the upstream Compose file, a
+To deploy \texttt{water-dp} alongside TSM without touching the upstream Compose file, a
 dedicated overlay was added:
 \texttt{docker-compose-water-dp.yml}. This file defines a single service, \texttt{water-dp-api},
 that connects to the TSM database, MQTT broker, FROST-Server, and Keycloak instance. The
@@ -62,7 +62,7 @@ that connects to the TSM database, MQTT broker, FROST-Server, and Keycloak insta
 tables and the TSM configuration tables. The overlay also starts a Redis container for the Celery
 task queue.
 
-The overlay approach ensures that the upstream \texttt{docker-compose.yml} remains unmodified and
+Because the overlay leaves the upstream \texttt{docker-compose.yml} untouched, it
 can be updated independently. The full Compose file chain used by \texttt{hydro-deploy} is
 described in Section~\ref{sec:impl-deploy-compose}.
 
@@ -83,7 +83,7 @@ restarts the Python process up to three times within a configurable window
 attempt, the launcher exits with status~0 to prevent Docker from triggering an infinite
 restart loop.
 
-Table~\ref{tab:tsm-workers} summarises each worker's input topic, output, and responsibility.
+Table~\ref{tab:tsm-workers} summarizes each worker's input topic, output, and responsibility.
 
 \begin{landscape}
 {\small
@@ -133,7 +133,7 @@ Table~\ref{tab:tsm-workers} summarises each worker's input topic, output, and re
   grafana-user
     & \texttt{userinfo\_keycloak}
     & ---
-    & Synchronises Keycloak user accounts with Grafana organisations and roles. \\[4pt]
+    & Synchronizes Keycloak user accounts with Grafana organizations and roles. \\[4pt]
   monitor-mqtt
     & \texttt{monitor\_mqtt}
     & ---
@@ -214,7 +214,7 @@ The \texttt{api/app/} directory follows a conventional layered layout:
         \texttt{APIRouter} in \texttt{api/v1/api.py} and mounted under the
         \texttt{/api/v1} prefix.
   \item \textbf{Schemas} (\texttt{schemas/}) --- Pydantic v2 models for request validation
-        and response serialisation. A \texttt{frost/} sub-package provides typed models for
+        and response serialization. A \texttt{frost/} sub-package provides typed models for
         STA entities (\texttt{Thing}, \texttt{Datastream}, \texttt{Observation}).
   \item \textbf{Services} (\texttt{services/}) --- business-logic classes that the endpoints
         delegate to. A \texttt{timeio/} sub-package encapsulates all integration points with
@@ -247,7 +247,7 @@ mode, SQLAlchemy's \texttt{create\_all()} is called at startup for convenience.
 \subsection{Project and Sensor Management}
 \label{sec:impl-backend-projects}
 
-The central abstraction is the \emph{project}, which groups sensors, alerts, dashboards, and
+At the core of the data model is the \emph{project}, grouping sensors, alerts, dashboards, and
 members into a logical unit. The \texttt{Project} model stores metadata (name, description,
 visibility) and references a Keycloak group through \texttt{authorization\_provider\_group\_name}.
 Sensors are linked to projects via the \texttt{project\_sensors} association table, which maps
@@ -333,7 +333,7 @@ against the GeoServer admin account.
 The service provides methods for workspace creation, PostGIS datastore configuration, and
 layer publishing. The \texttt{publish\_layer()} method registers a new feature type with a
 specified spatial reference system (SRS), default style, and visibility. The
-\texttt{publish\_sql\_view()} method creates layers backed by parameterised SQL views using
+\texttt{publish\_sql\_view()} method creates layers backed by parameterized SQL views using
 GeoServer's \texttt{JDBC\_VIRTUAL\_TABLE} metadata, which enables dynamic per-project
 sensor views without pre-creating database views.
 
@@ -342,7 +342,7 @@ Geospatial features are stored in the \texttt{water\_dp} schema using GeoAlchemy
 represent uploaded layers and their individual features. Layer-to-project associations
 are managed through the \texttt{LayerProjectAssignment} model.
 
-\subsection{Authentication and Authorisation}
+\subsection{Authentication and Authorization}
 \label{sec:impl-backend-auth}
 
 Token validation is implemented in \texttt{core/security.py}. The module fetches the JWKS
@@ -357,7 +357,7 @@ control: \texttt{get\_current\_user()} extracts and verifies the bearer token,
 \texttt{has\_role()} checks for a specific Keycloak realm role, and
 \texttt{get\_current\_active\_superuser()} verifies administrator privileges.
 
-Per-project authorisation uses the two-tier RBAC model described in
+Per-project authorization uses the two-tier RBAC model described in
 Section~\ref{sec:arch-tech-keycloak}. The \texttt{RBACService} in
 \texttt{services/rbac\_service.py} resolves the effective role by evaluating six rules in
 priority order: (1)~realm administrator receives owner access to all projects,
@@ -379,7 +379,7 @@ the capability set: \texttt{can\_view}, \texttt{can\_edit\_settings},
 
 The frontend portal is a Next.js~15 application using the App~Router with React~19. The
 application is deployed under the \texttt{/portal} base path and built in \texttt{standalone}
-output mode for containerised deployment.
+output mode for containerized deployment.
 
 \subsection{Information Architecture}
 \label{sec:impl-frontend-ia}
@@ -408,20 +408,20 @@ page. The SMS and Layers layouts additionally check the JWT group role to enforc
 component that supplies the React~Query \texttt{QueryClientProvider}, the NextAuth
 \texttt{SessionProvider}, a theme context, and an idle-timeout monitor.
 
-\subsection{Time-Series Visualisation}
+\subsection{Time-Series Visualization}
 \label{sec:impl-frontend-charts}
 
 The \texttt{TimeSeriesChart} component renders multi-series time-series data using the
 Recharts library. The component supports interactive zoom via two mechanisms: a
 \texttt{ReferenceArea} drawn by click-and-drag to select a time range, and a
 \texttt{Brush} component for scrolling through the full dataset. Multiple series
-(each with its own colour, label, and unit) are merged into a unified time axis by indexing
+(each with its own color, label, and unit) are merged into a unified time axis by indexing
 all data points into a shared timestamp map.
 
 Data is fetched through React~Query hooks in \texttt{hooks/queries/}, which provide
 caching, background refetching, and loading-state management. Ten query-hook modules
 cover the major resource types: projects, sensors, dashboards, alerts, QA/QC,
-SMS, layers, simulator, and permissions. Query keys are centralised in
+SMS, layers, simulator, and permissions. Query keys are centralized in
 \texttt{hooks/queries/keys.ts} to ensure cache consistency across components.
 
 The API client (\texttt{lib/api.ts}) is an Axios instance with a request interceptor that
@@ -530,7 +530,7 @@ encryption keys (with a fallback to \texttt{base64}-encoded random bytes if the
 \texttt{cryptography} library is unavailable), and \texttt{passphrase()} for 24-character
 alphanumeric strings.
 
-Credentials that must be identical across stacks are managed in synchronisation groups: a
+Credentials that must be identical across stacks are managed in synchronization groups: a
 single generated database password is written to \texttt{DATABASE\_PASSWORD},
 \texttt{TIMEIO\_DB\_PASSWORD}, \texttt{MQTT\_AUTH\_POSTGRES\_PASS}, and several Flyway
 variables simultaneously. The script is safe to re-run: it replaces only values that still

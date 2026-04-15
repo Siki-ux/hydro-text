@@ -1,15 +1,15 @@
 \chapter{Architecture Design}
 \label{chap:architecture}
 
-This chapter presents the architecture of the platform that resulted from addressing the gaps
-identified in Chapter~\ref{chap:requirements}. Section~\ref{sec:arch-overview} describes the
-overall system architecture and the rationale for the three-component split.
-Section~\ref{sec:arch-components} defines the responsibility boundaries of each component.
-Section~\ref{sec:arch-database} covers the database design, including the per-thing schema
-pattern and the local STA views layer. Section~\ref{sec:arch-mqtt} describes the MQTT-driven
-event architecture that integrates all workers. Section~\ref{sec:arch-technology} justifies
-the major technology selections. Section~\ref{sec:arch-deployment} describes the deployment
-strategy, including Docker Compose multi-file merging and rootless Podman support.
+The gaps identified in Chapter~\ref{chap:requirements} shaped the platform architecture
+presented here. Section~\ref{sec:arch-overview} lays out the
+overall system design and the rationale behind the three-component split.
+Section~\ref{sec:arch-components} defines each component's responsibility boundaries.
+The database design --- including the per-thing schema pattern and the local STA views ---
+follows in Section~\ref{sec:arch-database}. Section~\ref{sec:arch-mqtt} details the
+MQTT-driven event architecture, Section~\ref{sec:arch-technology} justifies
+the major technology selections, and Section~\ref{sec:arch-deployment} covers the
+deployment strategy with Docker Compose multi-file merging and rootless Podman support.
 
 %% ----------------------------------------------------------------
 \section{Overall System Architecture}
@@ -97,29 +97,27 @@ Figure~\ref{fig:arch-overview}.
 \end{figure}
 \end{landscape}
 
-\textbf{tsm-orchestration} provides the infrastructure layer: a Mosquitto MQTT broker,
+\textbf{tsm-orchestration} forms the infrastructure layer: a Mosquitto MQTT broker,
 PostgreSQL with TimescaleDB for time-series storage, FROST-Server for OGC SensorThings~API
 access, MinIO for S3-compatible object storage, Keycloak for identity management, Grafana for
-visualisation, and a set of Python-based ingestion workers. This component is a heavily modified
+visualization, and a set of Python-based ingestion workers. It is a heavily modified
 fork of the upstream UFZ Time.IO platform described in Section~\ref{sec:bg-timeio}.
 
-\textbf{water-dp} provides the application layer: a FastAPI backend, a Next.js frontend portal,
+\textbf{water-dp} sits on top as the application layer: a FastAPI backend, a Next.js frontend portal,
 a Celery worker for background tasks, GeoServer for geospatial layer management, and Redis as
-the Celery message broker. This component owns all application-level concepts --- projects,
-alerts, geospatial layers, sensor activity tracking --- that the upstream TSM platform does not
-provide.
+the Celery message broker. It owns all application-level concepts --- projects,
+alerts, geospatial layers, sensor activity tracking --- absent from the upstream TSM platform.
 
-\textbf{hydro-deploy} is a build-time-only orchestrator with no runtime presence. It merges
+\textbf{hydro-deploy} has no runtime presence. It merges
 the Docker Compose files from both stacks into a single project, manages shared secrets, and
-provides a Makefile-based operator interface. Its purpose is to allow both stacks to be
-deployed and operated as a single unit while preserving each stack's ability to run
-independently.
+exposes a Makefile-based operator interface. Both stacks can still be
+deployed and operated individually; hydro-deploy simply lets them run as a single unit.
 
-The three-component split was chosen to maintain a clear boundary between the adapted upstream
-infrastructure and the new application logic. This boundary ensures that upstream TSM updates
+Keeping the adapted upstream infrastructure separate from the new application logic was
+a deliberate choice. The boundary means that upstream TSM updates
 can be merged into the fork without conflicting with application-layer code, and that
 \texttt{water-dp} can be developed and tested against a running TSM instance without modifying
-it. The deployment orchestrator is kept separate so that neither runtime stack depends on it.
+it. The deployment orchestrator stays separate so that neither runtime stack depends on it.
 
 At runtime, all services communicate over a single Docker bridge network named
 \texttt{hydro-platform-net}. Each stack defines its own logical network name
@@ -153,7 +151,7 @@ The TSM stack owns the following responsibilities:
         MinIO buckets, MQTT credentials, Grafana dashboards, and FROST-Server context
         files when a new Thing is registered.
   \item \textbf{Data ingestion.} Workers for MQTT real-time ingestion, file-based
-        ingestion (CSV, JSON), external API synchronisation, and SFTP polling.
+        ingestion (CSV, JSON), external API synchronization, and SFTP polling.
   \item \textbf{Quality control.} The run-qaqc worker applies automated QC tests and
         stores quality flags alongside observations.
   \item \textbf{Standards-compliant access.} FROST-Server exposes all observation data
@@ -219,7 +217,7 @@ by \texttt{hydro-deploy}, both stacks share a single PostgreSQL instance with sc
 isolation. In standalone mode, each stack runs its own database server. This section describes
 the shared variant, which is the primary deployment target.
 
-\subsection{Schema Organisation}
+\subsection{Schema Organization}
 \label{sec:arch-db-shared}
 
 The shared PostgreSQL instance contains three categories of schemas:
@@ -438,80 +436,80 @@ the threshold. Inactivity alerts are resolved when the sensor sends new data.
 \label{sec:arch-technology}
 %% ----------------------------------------------------------------
 
-Technology selections were driven by the requirements identified in Chapter~\ref{chap:requirements}
-and by maintainability considerations given the expected lifetime of the platform. This section
-explains the rationale for each major choice.
+The technology choices were driven by the requirements from Chapter~\ref{chap:requirements}
+and by maintainability concerns given the expected platform lifetime. Each major choice
+is justified below.
 
 \subsection{Backend: FastAPI}
 \label{sec:arch-tech-fastapi}
 
-FastAPI~\parencite{fastapi-ref} was selected for the \texttt{water-dp} backend over Flask and Django. FastAPI provides
-native \texttt{async}/\texttt{await} support, which is necessary for non-blocking database
+FastAPI~\parencite{fastapi-ref} was chosen for the \texttt{water-dp} backend over Flask and Django. Its
+native \texttt{async}/\texttt{await} support is needed for non-blocking database
 queries (via SQLAlchemy~2.0 async sessions) and concurrent HTTP calls to FROST-Server and
-GeoServer. It generates OpenAPI documentation automatically from Pydantic request and response
-schemas, eliminating the need to maintain a separate API specification. Flask lacks built-in
-async support and would require additional libraries for request validation. Django was
-considered too heavy for a service that acts primarily as an API layer and does not use Django's
+GeoServer. Pydantic request and response schemas generate OpenAPI documentation automatically,
+so a separate API specification does not need to be maintained. Flask lacks built-in
+async support and would need additional libraries for request validation. Django was
+considered too heavy for a service that acts primarily as an API layer and does not rely on Django's
 ORM, template engine, or admin interface.
 
 \subsection{Frontend: Next.js~15}
 \label{sec:arch-tech-nextjs}
 
-Next.js~15~\parencite{nextjs-ref} with the App Router was selected for the frontend portal. React Server
-Components and server-side rendering enable authentication-protected routes to be rendered on
-the server, preventing unauthenticated users from receiving page content. The file-based
-routing convention reduces boilerplate, and built-in internationalisation support simplifies
-the multilingual requirement (FR-25). A plain React single-page application would require a
-separate server for SSR and manual route configuration. Vue.js was considered but its ecosystem
-for complex applications with SSR, authentication middleware, and internationalisation was less
-mature at the time of technology selection.
+Next.js~15~\parencite{nextjs-ref} with the App Router was chosen for the frontend portal. React Server
+Components and server-side rendering let authentication-protected routes be rendered on
+the server, so unauthenticated users never receive page content. File-based
+routing cuts boilerplate, and built-in internationalization support simplifies
+the multilingual requirement (FR-25). A plain React single-page application would need a
+separate server for SSR and manual route configuration. Vue.js was considered, but at the time
+of selection its ecosystem for complex applications combining SSR, authentication middleware,
+and internationalization was less mature.
 
 \subsection{Time-Series Storage: TimescaleDB}
 \label{sec:arch-tech-timescaledb}
 
-TimescaleDB~\parencite{timescaledb-ref} was selected over InfluxDB for time-series storage. TimescaleDB is a PostgreSQL
-extension, meaning it runs on the same database server that already hosts the TSM configuration
-database and the \texttt{water-dp} application schema. This eliminates the operational
-complexity of running and maintaining a separate database system. TimescaleDB provides
+TimescaleDB~\parencite{timescaledb-ref} was preferred over InfluxDB for time-series storage. As a PostgreSQL
+extension, it runs on the same database server that already hosts the TSM configuration
+database and the \texttt{water\_dp} application schema --- no separate database system
+to deploy and maintain. It brings
 automatic time-based chunking of hypertables, native compression for older chunks, and full
-SQL compatibility --- observations can be queried with standard SQL joins against configuration
-tables without a gateway or translation layer. InfluxDB would have required a separate
-deployment, a different query language (InfluxQL or Flux), and a synchronisation mechanism
+SQL compatibility, so observations can be joined with configuration
+tables without a gateway or translation layer. InfluxDB would have meant a separate
+deployment, a different query language (InfluxQL or Flux), and a synchronization mechanism
 between the two databases.
 
 \subsection{Geospatial Layer: GeoServer}
 \label{sec:arch-tech-geoserver}
 
-GeoServer~\parencite{geoserver-ref} was selected for geospatial layer management because it provides standards-compliant
-OGC Web Map Service (WMS) and Web Feature Service (WFS) interfaces over PostGIS data. This
-aligns with the platform's overall philosophy of using OGC standards for interoperability.
-GeoServer is widely used in research institutions and supports workspaces, datastores, and
-layer publishing through a REST~API, which the \texttt{water-dp} backend uses for programmatic
-layer management. The platform stores geospatial features in PostGIS geometry columns (SRID
-4326) and publishes them through GeoServer to the frontend, which renders them using
+GeoServer~\parencite{geoserver-ref} handles geospatial layer management. It exposes standards-compliant
+OGC Web Map Service (WMS) and Web Feature Service (WFS) interfaces over PostGIS data, fitting
+the platform's broader reliance on OGC standards for interoperability.
+GeoServer is widely deployed in research institutions and supports workspaces, datastores, and
+layer publishing through a REST~API, which the \texttt{water-dp} backend calls for programmatic
+layer management. Geospatial features reside in PostGIS geometry columns (SRID
+4326) and are published through GeoServer to the frontend, which renders them with
 MapLibre~GL.
 
 \subsection{Authentication: Keycloak}
 \label{sec:arch-tech-keycloak}
 
-Keycloak~\parencite{keycloak-ref} was retained from the upstream TSM stack. It provides a battle-tested OIDC
+Keycloak~\parencite{keycloak-ref} was carried over from the upstream TSM stack. It offers a battle-tested OIDC
 implementation with realm and client management, group-based access control, and integration
-with external identity providers. The platform uses a two-tier RBAC model: Keycloak realm
-roles define platform-wide privileges (e.g.\ administrator), while the \texttt{project\_members}
-table in the \texttt{water\_dp} schema defines per-project roles. Keycloak groups are linked to
-projects through the \texttt{authorization\_provider\_group\_id} column, enabling group
-membership to control project access without duplicating user management. The API validates
-JWT tokens by fetching the JSON Web Key Set (JWKS) from the Keycloak endpoint and verifying
-RS256 signatures.
+with external identity providers. A two-tier RBAC model splits responsibilities:
+Keycloak realm roles define platform-wide privileges (e.g.\ administrator), while the
+\texttt{project\_members} table in the \texttt{water\_dp} schema stores per-project roles.
+Keycloak groups link to projects through the \texttt{authorization\_provider\_group\_id}
+column, letting group membership govern project access without duplicating user management.
+JWT tokens are verified by fetching the JSON Web Key Set (JWKS) from the Keycloak endpoint
+and checking RS256 signatures.
 
 \subsection{Object Storage: MinIO}
 \label{sec:arch-tech-minio}
 
-MinIO~\parencite{minio-ref} was retained from the upstream TSM stack. It provides S3-compatible object storage
-without cloud service dependencies, which is important for on-premise deployments at research
-institutions. Each Thing receives its own MinIO bucket for raw data files. MinIO publishes
-S3~event notifications to MQTT when files are uploaded, triggering the file-ingest worker
-automatically. MinIO also serves as the storage backend for user-uploaded parser scripts and
+MinIO~\parencite{minio-ref} was also kept from the upstream TSM stack. Its S3-compatible object storage
+runs without cloud service dependencies --- important for on-premise deployments at research
+institutions. Each Thing gets its own MinIO bucket for raw data files. When a file lands
+in a bucket, MinIO fires an S3~event notification to MQTT, which triggers the file-ingest
+worker automatically. MinIO also stores user-uploaded parser scripts and
 external API syncer scripts used by the dynamic parser loading mechanism described in
 Section~\ref{sec:bg-timeio-parsers}.
 
@@ -591,7 +589,7 @@ The platform also supports rootless Podman for environments where the Docker dae
 unavailable. A preprocessing script (\texttt{podman\_prep.py}) transforms the standard
 Compose files into Podman-compatible variants by applying seven automated transformations:
 removing unsupported profile declarations, stripping incompatible \texttt{depends\_on}
-conditions, converting YAML booleans and environment variable formats, absolutising
+conditions, converting YAML booleans and environment variable formats, absolutizing
 relative paths, and removing \texttt{tmpfs} UID/GID options rejected by rootless
 \texttt{crun}. A hand-maintained overlay handles GeoServer UID mapping and network
 pre-creation. The Makefile auto-detects the available container engine.

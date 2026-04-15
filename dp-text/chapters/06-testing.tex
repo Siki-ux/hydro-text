@@ -1,10 +1,11 @@
 \chapter{Testing and Evaluation}
 \label{chap:testing}
 
-This chapter evaluates the platform against the requirements established in Chapter~\ref{chap:requirements}.
-Section~\ref{sec:test-approach} describes the testing strategy. Section~\ref{sec:test-requirements} evaluates each
-requirement. Section~\ref{sec:test-performance} discusses performance and scalability. Section~\ref{sec:test-deployment}
-documents the CZU deployment and discusses the path to eLTER adoption.
+The platform is evaluated against the requirements from Chapter~\ref{chap:requirements}.
+Section~\ref{sec:test-approach} outlines the testing strategy used. The requirements
+are assessed one by one in Section~\ref{sec:test-requirements}. Performance and scalability
+considerations follow in Section~\ref{sec:test-performance}, and Section~\ref{sec:test-deployment}
+covers the CZU deployment and the path to eLTER adoption.
 
 %% ----------------------------------------------------------------
 \section{Testing Approach}
@@ -20,7 +21,7 @@ deployment.
 \label{sec:test-approach-backend}
 
 The \texttt{water-dp} backend includes a pytest-based test suite comprising 797~test
-functions across 43~test files, organised into five directories:
+functions across 43~test files, organized into five directories:
 \texttt{test\_api/} (endpoint-level tests), \texttt{test\_services/} (business-logic tests),
 \texttt{test\_core/} (middleware, security, and exception handling), \texttt{test\_schemas/}
 (Pydantic model validation), and \texttt{test\_tasks/} (Celery background tasks).
@@ -30,7 +31,7 @@ provides a \texttt{MagicMock(spec=Session)} for SQLAlchemy interactions. The \te
 fixture creates a FastAPI \texttt{TestClient} with dependency overrides that inject the mocked
 database session and an authenticated admin user, enabling endpoint tests to run without a
 real database or Keycloak instance. An autouse \texttt{disable\_seeding} fixture prevents
-the application from running database initialisation at startup.
+the application from running database initialization at startup.
 
 Custom pytest markers (\texttt{api}, \texttt{services}, \texttt{core}, \texttt{v1}) are
 assigned automatically based on the test file's directory, enabling selective test execution.
@@ -40,7 +41,7 @@ The default configuration in \texttt{pytest.ini} excludes tests marked as
 Coverage is measured with \texttt{pytest-cov} against the \texttt{app/} package. The
 largest test files target the most critical business logic: the TimeIO database service
 (152~tests covering schema management and observation queries), the RBAC permission resolver
-(76~tests covering role inheritance, batch resolution, and group-based authorisation),
+(76~tests covering role inheritance, batch resolution, and group-based authorization),
 and the alert evaluator (69~tests covering all operators, deduplication, sensor data
 evaluation, and QA/QC rule evaluation).
 
@@ -92,7 +93,7 @@ or \emph{not met}, with evidence from the test suite, source code, or deployed s
 \subsection{Functional Requirements}
 \label{sec:test-requirements-functional}
 
-Table~\ref{tab:req-evaluation-fr} summarises the evaluation of functional requirements.
+Table~\ref{tab:req-evaluation-fr} summarizes the evaluation of functional requirements.
 
 \begin{landscape}
 {\small
@@ -113,10 +114,10 @@ Table~\ref{tab:req-evaluation-fr} summarises the evaluation of functional requir
         & Fully met
         & file-ingest worker; 13~\texttt{test\_things.py} tests cover CSV upload
           endpoint. \\[3pt]
-  FR-3  & External SFTP synchronisation
+  FR-3  & External SFTP synchronization
         & Fully met
         & sync-extsftp worker; triggered by cron via MQTT. \\[3pt]
-  FR-4  & External REST API synchronisation
+  FR-4  & External REST API synchronization
         & Fully met
         & sync-extapi worker; DWD, TTN, Bosch, T-Systems, UBA syncers;
           30~upstream syncer tests. \\[3pt]
@@ -131,14 +132,14 @@ Table~\ref{tab:req-evaluation-fr} summarises the evaluation of functional requir
   FR-7  & Bulk sensor import from CSV template
         & Fully met
         & \texttt{BulkImportDialog} component; 6~\texttt{test\_bulk.py} tests
-          with validation and authorisation checks. \\[3pt]
+          with validation and authorization checks. \\[3pt]
   FR-8  & Sensor inactivity detection and alerting
         & Fully met
         & \texttt{MonitoringService}; 51~\texttt{test\_monitoring\_service.py}
           tests. \\[3pt]
   FR-9  & Reusable MQTT device types and CSV parsers
         & Fully met
-        & SMS catalogue endpoints; parser/device-type CRUD tested in
+        & SMS catalog endpoints; parser/device-type CRUD tested in
           \texttt{test\_sms.py}. \\[3pt]
   FR-10 & Project CRUD with sensor grouping
         & Fully met
@@ -206,7 +207,7 @@ Table~\ref{tab:req-evaluation-fr} summarises the evaluation of functional requir
 \subsection{Non-Functional Requirements}
 \label{sec:test-requirements-nonfunctional}
 
-Table~\ref{tab:req-evaluation-nfr} summarises the evaluation of non-functional requirements.
+Table~\ref{tab:req-evaluation-nfr} summarizes the evaluation of non-functional requirements.
 
 {\small
 \begin{longtable}{l p{0.30\linewidth} l p{0.38\linewidth}}
@@ -218,7 +219,7 @@ Table~\ref{tab:req-evaluation-nfr} summarises the evaluation of non-functional r
   \textbf{ID} & \textbf{Requirement} & \textbf{Status} & \textbf{Evidence} \\
   \hline
   \endhead
-  NFR-1 & Containerised deployment (Docker + Podman)
+  NFR-1 & Containerized deployment (Docker + Podman)
         & Fully met
         & \texttt{hydro-deploy} supports both runtimes; \texttt{podman\_prep.py}
           applies seven transformations. \\[3pt]
@@ -291,7 +292,7 @@ Section~\ref{sec:req-gap} to their resolution status.
          language switching. \\[3pt]
   G-11 & Resolved & \texttt{TimeIOOrchestrator} generates MQTT configuration
          messages compatible with the ingestion pipeline. \\[3pt]
-  G-12 & Resolved & SMS catalogue endpoints for parser and device-type CRUD;
+  G-12 & Resolved & SMS catalog endpoints for parser and device-type CRUD;
          dynamic parser loading from MinIO. \\
 \end{longtable}
 
@@ -305,9 +306,9 @@ absence of eLTER-specific metadata schemas, which are planned as future work.
 \label{sec:test-performance}
 %% ----------------------------------------------------------------
 
-The platform was not subject to formal performance benchmarking as part of this thesis.
-This section discusses the architectural properties that affect performance and identifies
-known bottlenecks.
+No formal performance benchmarking was carried out as part of this thesis.
+What follows is a discussion of architectural properties that affect performance, together
+with the known bottlenecks.
 
 \subsection{Time-Series Query Performance}
 \label{sec:test-perf-timescaledb}
@@ -339,14 +340,14 @@ configurable concurrency.
 \subsection{Known Bottleneck}
 \label{sec:test-perf-bottleneck}
 
-The primary performance bottleneck is FROST-Server. As a synchronous Java application
-running on Tomcat, FROST processes STA queries sequentially within each thread. When the
-\texttt{water-dp} API fetches sensor metadata for a project containing many Things, each
-FROST query must complete before the next is dispatched. The \texttt{AsyncThingService}
-mitigates this by issuing FROST requests concurrently via \texttt{httpx} connection pooling,
-but FROST-Server itself remains the throughput ceiling. Replacing FROST with a lighter STA
+FROST-Server represents the main performance bottleneck. As a synchronous Java application
+running on Tomcat, it processes STA queries sequentially within each thread. When the
+\texttt{water-dp} API fetches sensor metadata for a project with many Things, each
+FROST query must finish before the next one starts. \texttt{AsyncThingService}
+mitigates this by firing FROST requests concurrently via \texttt{httpx} connection pooling,
+but FROST-Server itself remains the throughput ceiling. Swapping FROST for a lighter STA
 implementation or adding a caching layer for frequently accessed metadata are potential
-future optimisations.
+future optimizations.
 
 %% ----------------------------------------------------------------
 \section{Deployment on CZU Infrastructure and eLTER Path}
@@ -384,7 +385,7 @@ described in Section~\ref{sec:bg-elter}. The data access layer is built on the O
 SensorThings API, which is a candidate standard for eLTER data exchange. Authentication
 uses Keycloak with OpenID Connect, supporting the federated identity models common in
 European research infrastructures. Project-based isolation provides the multi-tenancy
-needed for hosting data from independent research sites. The containerised deployment
+needed for hosting data from independent research sites. The containerized deployment
 with single-file configuration enables reproducible installation across heterogeneous
 institutional environments.
 
@@ -399,7 +400,7 @@ between the current platform and a production-ready eLTER deployment:
   \item \textbf{Cross-site federation.} The platform operates as a single-site
     deployment. eLTER's distributed nature, spanning over 400~sites across more than
     25~countries, requires federation mechanisms: cross-site discovery, aggregated
-    queries, and data harmonisation across independently operated instances.
+    queries, and data harmonization across independently operated instances.
   \item \textbf{Vocabulary alignment.} eLTER uses controlled vocabularies (EnvThes)
     for observed properties and ecosystem parameters. The current platform stores
     observed-property metadata as free-text fields inherited from FROST, with no
@@ -434,5 +435,5 @@ Second, the upstream SMS service has remained non-functional throughout the dura
 of this thesis, and no public roadmap for its restoration has been communicated. This
 reinforces the conclusion stated in Section~\ref{sec:impl-tsm-assessment}: a targeted
 rewrite of the affected components --- replacing them with a clean implementation
-rather than workarounds labelled as temporary --- is the more defensible long-term
+rather than workarounds labeled as temporary --- is the more defensible long-term
 strategy than waiting for an upstream fix with no guaranteed timeline.

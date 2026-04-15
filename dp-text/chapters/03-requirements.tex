@@ -1,8 +1,9 @@
 \chapter{Requirements Analysis}
 \label{chap:requirements}
 
-This chapter derives the requirements for the platform from the CZU deployment context and performs a gap analysis
-against the baseline Time.IO system. Section~\ref{sec:req-usecases} identifies the CZU use cases and stakeholder
+The requirements for the platform are derived from the CZU deployment context. A gap analysis
+against the baseline Time.IO system then motivates the scope of the contributions.
+Section~\ref{sec:req-usecases} identifies the CZU use cases and stakeholder
 needs. Sections~\ref{sec:req-functional} and~\ref{sec:req-nonfunctional} enumerate the functional and non-functional
 requirements respectively. Section~\ref{sec:req-gap} compares those requirements against the capabilities of the
 original UFZ Time.IO system.
@@ -16,13 +17,13 @@ Czech University of Life Sciences Prague (CZU) operates environmental monitoring
 across river catchment monitoring projects and experimental plots. The primary stakeholders are
 research groups responsible for individual monitoring projects, each of which manages a distinct
 set of sensors and requires isolated data views with controlled access. Three actor roles interact
-with the platform: \emph{Researcher} (creates projects, configures sensors, analyses data),
+with the platform: \emph{Researcher} (creates projects, configures sensors, analyzes data),
 \emph{Administrator} (manages users, groups, and platform-wide settings), and
 \emph{External System} (automated data sources such as MQTT devices, SFTP servers, and external
 APIs). An additional implicit actor is the \emph{TSM Ingestion Pipeline}, which provisions
 infrastructure and processes data on behalf of the other actors.
 
-The use cases are organised into three groups: data ingestion, platform management, and data
+The use cases are organized into three groups: data ingestion, platform management, and data
 consumption. These groups are illustrated in Figures~\ref{fig:uc-ingestion},
 \ref{fig:uc-management}, and~\ref{fig:uc-consumption}.
 
@@ -54,7 +55,7 @@ consumption. These groups are illustrated in Figures~\ref{fig:uc-ingestion},
   \label{fig:uc-consumption}
 \end{figure}
 
-The identified use cases are summarised in Table~\ref{tab:usecases}.
+The identified use cases are summarized in Table~\ref{tab:usecases}.
 %% UC-16 (Run computation) removed — feature decommissioned.
 
 \begin{longtable}{l p{0.58\textwidth} p{0.18\textwidth}}
@@ -99,10 +100,10 @@ The identified use cases are summarised in Table~\ref{tab:usecases}.
           subgroups (viewers, editors, admins). & Administrator \\
   UC-11 & Create and publish geospatial layers (vector, raster, WMS) through
           GeoServer with configurable access control. & Administrator \\
-  UC-12 & Visualise time-series data for one or more Datastreams with
+  UC-12 & Visualize time-series data for one or more Datastreams with
           interactive charts, decimation controls, and adjustable Y-axis bounds.
           & Researcher \\
-  UC-13 & View sensor locations on an interactive map with colour-coded markers
+  UC-13 & View sensor locations on an interactive map with color-coded markers
           and overlay geospatial layers. & Researcher \\
   UC-14 & Export Observation data as CSV for offline analysis. & Researcher \\
   UC-15 & Query the OGC SensorThings API endpoint for machine-to-machine data
@@ -149,7 +150,7 @@ in Chapter~\ref{chap:testing}.
     a configurable threshold (default: 24~hours) and raising alerts when no data is received.
     \emph{(UC-8)}
   \item[FR-9] The system shall manage MQTT device types and CSV parser definitions as reusable
-    catalogue entries that can be assigned to multiple Things. \emph{(UC-7)}
+    catalog entries that can be assigned to multiple Things. \emph{(UC-7)}
 \end{description}
 
 \subsection{Project Management}
@@ -179,14 +180,14 @@ in Chapter~\ref{chap:testing}.
     API. \emph{(UC-9)}
 \end{description}
 
-\subsection{Visualisation}
+\subsection{Visualization}
 \label{sec:req-functional-viz}
 
 \begin{description}
   \item[FR-16] The system shall provide interactive time-series charts with support for multiple
     Datastream overlays, decimation controls for large datasets, and adjustable Y-axis bounds.
     \emph{(UC-12)}
-  \item[FR-17] The system shall display sensor locations on an interactive map with colour-coded
+  \item[FR-17] The system shall display sensor locations on an interactive map with color-coded
     markers and popup details. WMS/WFS geospatial layers shall be overlayable. \emph{(UC-13)}
   %% FR-18 removed — custom dashboards decommissioned.
   \item[FR-19] The system shall allow exporting Observation data as CSV files for offline
@@ -235,7 +236,7 @@ in Chapter~\ref{chap:testing}.
 The non-functional requirements govern the operational and quality properties of the platform.
 
 \begin{description}
-  \item[NFR-1] \textbf{Containerised deployment.} The entire platform shall be deployable as
+  \item[NFR-1] \textbf{Containerized deployment.} The entire platform shall be deployable as
     Docker Compose services. Rootless Podman shall be supported as an alternative container
     runtime.
 
@@ -273,7 +274,7 @@ The non-functional requirements govern the operational and quality properties of
 \label{sec:req-gap}
 %% ================================================================
 
-Table~\ref{tab:gap-analysis} summarises the gap between the Time.IO baseline capabilities and the
+Table~\ref{tab:gap-analysis} summarizes the gap between the Time.IO baseline capabilities and the
 requirements identified in Sections~\ref{sec:req-functional} and~\ref{sec:req-nonfunctional}.
 Each row identifies a capability that the upstream Time.IO system does not provide, the specific
 requirements it blocks, and the component that addresses the gap in this thesis.
@@ -295,7 +296,7 @@ requirements it blocks, and the component that addresses the gap in this thesis.
   \bottomrule
   \endlastfoot
 
-  G-1 & \textbf{No project-oriented data model.} Time.IO organises Things by
+  G-1 & \textbf{No project-oriented data model.} Time.IO organizes Things by
         configdb projects (Keycloak groups), but provides no application-level
         project entity with member roles or sensor assignment.
         \emph{(FR-10--12)} & \texttt{water-dp} \\[6pt]
@@ -303,7 +304,7 @@ requirements it blocks, and the component that addresses the gap in this thesis.
   G-2 & \textbf{No user-facing web portal.} The upstream frontends
         (\texttt{tsm-frontend}, \texttt{thing-management}) provide only basic
         Thing CRUD through Django or Vue.js admin interfaces. No unified portal
-        with time-series visualisation, map display, or alerting exists.
+        with time-series visualization, map display, or alerting exists.
         \emph{(FR-16--19)} & \texttt{water-dp} \\[6pt]
 
   G-3 & \textbf{No geospatial layer management.} Time.IO stores geographic
@@ -337,7 +338,7 @@ requirements it blocks, and the component that addresses the gap in this thesis.
         \emph{(NFR-1)} & \texttt{hydro-deploy} \\[6pt]
 
   G-9 & \textbf{No multilingual interface.} The upstream frontends are
-        English-only with no internationalisation framework. Czech and Slovak
+        English-only with no internationalization framework. Czech and Slovak
         language support is required for CZU users.
         \emph{(FR-25)} & \texttt{water-dp} \\[6pt]
 
