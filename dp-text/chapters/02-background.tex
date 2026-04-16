@@ -1,7 +1,7 @@
 \chapter{Background and Related Work}
 \label{chap:background}
 
-The platform described in later chapters builds on several technologies and prior systems.
+Later chapters build on several technologies and prior systems described here.
 Section~\ref{sec:bg-sensor-data} reviews environmental sensor data management and its key challenges.
 The OGC SensorThings API standard along with its FROST-Server implementation are covered in
 Section~\ref{sec:bg-sta}. Section~\ref{sec:bg-timeio} then analyzes the UFZ Time.IO solution
@@ -20,8 +20,8 @@ edge devices sampling physical quantities, an ingestion layer receiving data ove
 protocols, a storage layer optimized for time-series workloads, and an access layer exposing the
 data through standardized interfaces \parencite{hart2006environmental}.
 
-The heterogeneity of these systems poses a significant engineering challenge. A single monitoring network
-may combine sensors from different manufacturers --- each using a proprietary payload format --- delivered
+Heterogeneity across these systems poses a significant engineering challenge. A single monitoring network
+may combine sensors from different manufacturers, each using a proprietary payload format, delivered
 over MQTT, HTTP~POST, SFTP file upload, or manual CSV import. Temporal resolutions range from
 sub-second sampling on vibrating-wire piezometers to daily aggregates from weather stations.
 Reconciling these differences into a unified data model is a prerequisite for any cross-site analysis
@@ -84,8 +84,8 @@ entity changes in real time, making it suitable for both historical queries and 
 \subsection{FROST-Server}
 \label{sec:bg-frost}
 
-FROST-Server \parencite{frost-server} is an open-source Java implementation of the OGC SensorThings API
-developed by the Fraunhofer Institute for Optronics, System Technologies and Image Exploitation (IOSB).
+As an open-source Java implementation of the OGC SensorThings API,
+FROST-Server \parencite{frost-server} was developed by the Fraunhofer Institute for Optronics, System Technologies and Image Exploitation (IOSB).
 It is the most widely adopted STA server implementation and serves as the reference for conformance testing.
 
 FROST-Server is deployed as a Java web application on Apache Tomcat and uses PostgreSQL with the
@@ -102,9 +102,9 @@ that specifies the JDBC connection parameters, API version, and plugin settings.
         uses a maximum of 20 connections per context).
 \end{itemize}
 
-A key architectural property of FROST-Server is that it reads its entity data from PostgreSQL views
+A key architectural property of FROST-Server is that it reads entity data from PostgreSQL views
 rather than requiring a specific physical table layout. This allows operators to map an existing
-database schema to the STA entity model by defining appropriate SQL views --- a capability that
+database schema to the STA entity model by defining appropriate SQL views, a capability that
 the Time.IO platform exploits through its local STA views, as described in
 Section~\ref{sec:bg-timeio-arch}.
 
@@ -122,7 +122,7 @@ point for the work described in this thesis.
 \subsection{The UFZ TSM Ecosystem}
 \label{sec:bg-timeio-ecosystem}
 
-The UFZ TSM project is not a single repository but a broader ecosystem of over a dozen
+Not a single repository, the UFZ TSM project is a broader ecosystem of over a dozen
 components hosted under the \texttt{ufz-tsm} group on the Helmholtz Codebase. Beyond the
 core \texttt{tsm-orchestration} ingestion pipeline adopted in this thesis, the ecosystem
 includes two frontend projects (\texttt{tsm-frontend}, a Django application with 465~commits,
@@ -167,25 +167,22 @@ MQTT topics, performs its designated processing, and optionally publishes result
 topics. This design decouples the components and allows independent scaling and deployment
 of each worker.
 
-The configuration database (\texttt{config\_db} schema) stores the metadata that drives the entire
+Its configuration database (\texttt{config\_db} schema) stores the metadata that drives the entire
 pipeline. Key tables include \texttt{thing} (sensor device definitions), \texttt{project} (logical
 groupings of Things), \texttt{database} (connection credentials per project), \texttt{s3\_store}
 (MinIO bucket configuration), \texttt{file\_parser} and \texttt{file\_parser\_type} (parser
 definitions), \texttt{mqtt} and \texttt{mqtt\_device\_type} (MQTT ingestion settings), and
 \texttt{ext\_api} and \texttt{ext\_sftp} (external data source configurations).
 
-A central design decision is the \emph{per-thing schema} pattern: when a new Thing is provisioned,
-the platform creates a dedicated PostgreSQL schema containing its own \texttt{observation} and
-\texttt{datastream} tables. The observation table is converted to a TimescaleDB hypertable, enabling
-automatic time-based partitioning and compression. This isolation guarantees that one sensor's data
-volume or query load does not affect another, and it simplifies access-control policies at the database
-level. The mapping between a Thing's UUID and its schema name is stored in the
-\texttt{public.schema\_thing\_mapping} table.
+Central to this design is the \emph{per-thing schema} pattern: when a new Thing is provisioned,
+the platform creates a dedicated PostgreSQL schema containing its own observation and
+datastream tables. The full provisioning sequence and its isolation properties are described
+in Section~\ref{sec:arch-db-perthings}.
 
-The upstream FROST-Server integration relies on a set of SQL views
+Upstream FROST-Server integration relies on a set of SQL views
 (\texttt{sql/sta\_views/}) that map the STA entity model to tables managed by the external
-Sensor Management System (SMS). These views query SMS-provided metadata --- device catalogs,
-contact records, deployment actions, and datastream links --- to construct the
+Sensor Management System (SMS). These views query SMS-provided metadata (device catalogs,
+contact records, deployment actions, and datastream links) to construct the
 \texttt{THINGS}, \texttt{DATASTREAMS}, \texttt{OBSERVATIONS}, and related entities that
 FROST-Server reads. Because the SMS service was never operational
 (Section~\ref{sec:bg-timeio-limitations}), these views returned empty result sets or failed
@@ -193,82 +190,36 @@ entirely, rendering the STA endpoint non-functional. Without a working STA layer
 could not serve any observation data, effectively breaking one of the platform's core access
 interfaces.
 
-As part of this thesis, an alternative set of local SQL views
-(\texttt{sql/sta\_views\_local/}) was introduced to bypass the SMS dependency. These views
-derive FROST entities directly from the per-thing schemas and the configuration database.
-For example, the \texttt{DATASTREAMS} view extracts unit-of-measurement information from
-JSONB properties and constructs the STA-compliant JSON structure, while the
-\texttt{OBSERVATIONS} view maps local columns to STA result fields. Entity types that
-have no local equivalent --- \texttt{SENSORS}, \texttt{OBSERVED\_PROPERTIES},
-\texttt{FEATURES\_OF\_INTEREST}, and \texttt{HISTORICAL\_LOCATIONS} --- are provided as
-empty stub views so that FROST-Server starts without errors. A runtime toggle
-(\texttt{USE\_LOCAL\_STA\_VIEWS}, defaulting to \texttt{true}) selects between the local
-and SMS-based view sets during Thing provisioning. All code related to this workaround is
-marked with the label \texttt{TSM-TEMP} in the codebase.
+As part of this thesis, an alternative set of local SQL views was introduced to bypass the
+SMS dependency. These views derive FROST entities directly from the per-thing schemas and
+the configuration database rather than from SMS. Their design is described in
+Section~\ref{sec:arch-db-staviews} and their implementation in
+Section~\ref{sec:impl-tsm-staviews}.
 
 \subsection{Worker Architecture}
 \label{sec:bg-timeio-workers}
 
 All workers inherit from the \texttt{AbstractHandler} base class defined in the \texttt{timeio.mqtt}
-module. This base class manages the MQTT connection lifecycle, health-check heartbeats (published to
-\texttt{health/\{client\_id\}/ping}), and structured error handling. Each worker subscribes to its
-designated topic and implements the \texttt{on\_message} callback.
+module. This base class manages the MQTT connection lifecycle, health-check heartbeats, and
+structured error handling. Each worker subscribes to one or more MQTT topics, performs its
+designated processing in the \texttt{on\_message} callback, and optionally publishes results
+to downstream topics. This message-driven design decouples the components and allows
+independent scaling and deployment.
 
-The platform defines the following workers:
-
-\begin{description}
-  \item[configdb-updater] Subscribes to \texttt{frontend\_thing\_update} and
-    \texttt{qaqc\_settings\_update}. Receives Thing and quality-control configuration messages,
-    validates the content version (versions~4--7 are supported), and upserts the configuration into
-    the \texttt{config\_db} schema. Upon successful storage, it publishes a notification to a
-    downstream topic, triggering the thing-setup worker.
-
-  \item[thing-setup] Subscribes to the configdb-update notification topic. Orchestrates six
-    infrastructure provisioning actions for a newly created or modified Thing:
-    (1)~creates a PostgreSQL user, schema, and observation tables;
-    (2)~creates a MinIO bucket and access policy;
-    (3)~creates MQTT credentials;
-    (4)~provisions a Grafana dashboard and organization;
-    (5)~writes a FROST-Server Tomcat context file with JDBC parameters; and
-    (6)~schedules periodic cron jobs. Each action is implemented as a composable handler and can
-    be invoked individually or as part of the full provisioning sequence.
-
-  \item[file-ingest] Subscribes to MinIO S3 bucket notifications
-    (\texttt{object\_storage\_notification}). When a file is uploaded to a Thing's bucket, the
-    worker retrieves the Thing from the configuration database using the bucket name, loads the
-    appropriate file parser, reads the raw file from MinIO (up to 256~MB), parses it into
-    observations, and upserts the results through the database API. It then publishes a
-    \texttt{data\_parsed} message for downstream quality control.
-
-  \item[mqtt-ingest] Subscribes to MQTT data topics (typically \texttt{mqtt\_ingest/\{username\}/\#}).
-    Extracts the MQTT username from the topic path, resolves the corresponding Thing, loads the
-    device-specific parser by type name, parses the payload into observations, and upserts them
-    to the database. Publishes \texttt{data\_parsed} upon completion.
-
-  \item[run-qaqc] Subscribes to \texttt{data\_parsed}. Loads the Thing's quality-control configuration,
-    retrieves the newly parsed observations, executes the configured QC tests using a
-    \texttt{StreamManager} engine, and stores the quality flags back to the database. Publishes
-    a \texttt{qaqc\_done} notification upon completion.
-
-  \item[sync-extapi] Subscribes to synchronization trigger messages. Supports multiple built-in
-    API syncers for external data sources: T-Systems, Bosch, the German Environmental Agency (UBA),
-    the German Weather Service (DWD), and The Things Network (TTN).
-
-  \item[sync-extsftp] Subscribes to synchronization trigger messages. Connects to external SFTP
-    servers using encrypted credentials (Fernet-based encryption), downloads new files, and uploads
-    them to the Thing's MinIO bucket for subsequent file-ingest processing.
-\end{description}
-
-A cron scheduler service triggers periodic execution of the sync-extapi and sync-extsftp workers
-at configured intervals, enabling automated data acquisition from external sources.
+The platform deploys nine workers covering configuration processing, infrastructure
+provisioning, data ingestion (file-based and MQTT-based), quality control, and
+synchronization with external data sources. A cron scheduler triggers periodic execution
+of the synchronization workers. The full worker catalog with MQTT topics and
+responsibilities is presented in Table~\ref{tab:tsm-workers}
+(Section~\ref{sec:impl-tsm-workers}).
 
 \subsection{Parser Framework}
 \label{sec:bg-timeio-parsers}
 
 The data parsing subsystem uses a pluggable architecture based on an abstract base class
 (\texttt{AbcParser}) with concrete implementations registered in a parser map. The framework
-distinguishes between file parsers --- used by the file-ingest worker for uploaded CSV and JSON
-files --- and MQTT parsers --- used by the mqtt-ingest worker for real-time device payloads.
+distinguishes between file parsers (used by the file-ingest worker for uploaded CSV and JSON
+files) and MQTT parsers (used by the mqtt-ingest worker for real-time device payloads).
 
 File parsers include a general-purpose CSV parser (\texttt{CsvParser}), a JSON parser
 (\texttt{JsonParser}), and a Pandas-based parser (\texttt{PandasParser}) for complex
@@ -305,7 +256,7 @@ Chapter~\ref{chap:architecture}.
 \subsection{Limitations and State at the Time of This Work}
 \label{sec:bg-timeio-limitations}
 
-At the time this work commenced, the Time.IO platform exhibited several limitations that directly
+At the time this work commenced, Time.IO exhibited several limitations that directly
 motivated the contributions of this thesis. These limitations span the SMS integration, the
 upstream frontend solutions, and the overall project maturity.
 
@@ -321,11 +272,9 @@ to execute, rendering FROST-Server unable to serve any observation data. This wa
 gap: the STA endpoint is a core access interface of the platform, and its absence made the upstream
 TSM deployment effectively non-functional for any client expecting standards-compliant data access.
 
-The local STA views introduced by this thesis (described in
-Section~\ref{sec:bg-timeio-arch}) restored FROST-Server functionality by deriving entity data
-from the per-thing schemas and configuration database rather than from SMS. This workaround is
-marked with the label \texttt{TSM-TEMP} in the codebase and is controlled by the
-\texttt{USE\_LOCAL\_STA\_VIEWS} environment variable.
+The local STA views introduced by this thesis (Section~\ref{sec:arch-db-staviews})
+restored FROST-Server functionality by deriving entity data from the per-thing schemas and
+configuration database rather than from SMS.
 
 The \texttt{timeio-and-sms} combined deployment repository, which was intended to demonstrate
 the integrated SMS and Time.IO workflow, proved impossible to deploy successfully. Multiple
@@ -346,7 +295,7 @@ to silent failures in infrastructure provisioning.
 The newer \texttt{thing-management} replacement (Vue.js~3 + FastAPI) was still in early development
 at the time of this work, with limited functionality and similar integration issues. The
 frontend's MQTT message generation contained bugs that caused several core ingestion workflows
---- particularly file-based ingestion and external API synchronization --- to fail. Neither
+, particularly file-based ingestion and external API synchronization, to fail. Neither
 upstream frontend provided project-based multi-tenancy, role-based access control beyond basic
 Helmholtz~AAI group membership, alerting, geospatial layer management, or internationalization
 --- all of which were required for the CZU deployment.

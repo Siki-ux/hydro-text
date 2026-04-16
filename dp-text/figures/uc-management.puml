@@ -1,26 +1,26 @@
 @startuml uc-management
 left to right direction
-skinparam actorStyle awesome
 skinparam packageStyle rectangle
 skinparam shadowing false
 skinparam defaultFontSize 12
+skinparam linetype polyline
 
 actor Researcher as researcher
 actor Administrator as admin
 
 rectangle "Platform Management" {
-  usecase "UC-6: Manage\nprojects" as UC6
   usecase "UC-7: Configure\nsensors" as UC7
   usecase "UC-8: Define\nalert rules" as UC8
   usecase "UC-9: Configure\nQA/QC tests" as UC9
+  usecase "UC-6: Manage\nprojects" as UC6
   usecase "UC-10: Manage\nusers & groups" as UC10
   usecase "UC-11: Manage\ngeospatial layers" as UC11
 }
 
-researcher -- UC6
 researcher -- UC7
 researcher -- UC8
 researcher -- UC9
+researcher -- UC6
 admin -- UC6
 admin -- UC10
 admin -- UC11

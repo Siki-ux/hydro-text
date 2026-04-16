@@ -5,7 +5,7 @@ The gaps identified in Chapter~\ref{chap:requirements} shaped the platform archi
 presented here. Section~\ref{sec:arch-overview} lays out the
 overall system design and the rationale behind the three-component split.
 Section~\ref{sec:arch-components} defines each component's responsibility boundaries.
-The database design --- including the per-thing schema pattern and the local STA views ---
+The database design, including the per-thing schema pattern and the local STA views,
 follows in Section~\ref{sec:arch-database}. Section~\ref{sec:arch-mqtt} details the
 MQTT-driven event architecture, Section~\ref{sec:arch-technology} justifies
 the major technology selections, and Section~\ref{sec:arch-deployment} covers the
@@ -105,8 +105,8 @@ fork of the upstream UFZ Time.IO platform described in Section~\ref{sec:bg-timei
 
 \textbf{water-dp} sits on top as the application layer: a FastAPI backend, a Next.js frontend portal,
 a Celery worker for background tasks, GeoServer for geospatial layer management, and Redis as
-the Celery message broker. It owns all application-level concepts --- projects,
-alerts, geospatial layers, sensor activity tracking --- absent from the upstream TSM platform.
+the Celery message broker. It owns all application-level concepts (projects,
+alerts, geospatial layers, sensor activity tracking) absent from the upstream TSM platform.
 
 \textbf{hydro-deploy} has no runtime presence. It merges
 the Docker Compose files from both stacks into a single project, manages shared secrets, and
@@ -421,7 +421,7 @@ The MQTT subscription runs as a daemon thread inside the Celery worker process, 
 for asynchronous processing, ensuring that the MQTT callback does not block.
 
 Sensor inactivity checks remain on a periodic Celery Beat schedule (every 30~minutes). This
-hybrid approach --- event-driven for QA/QC alerts, periodic for inactivity --- was chosen
+hybrid approach (event-driven for QA/QC alerts, periodic for inactivity) was chosen
 because inactivity is defined by the \emph{absence} of events, which cannot be detected by
 subscribing to a topic.
 
@@ -469,7 +469,7 @@ and internationalization was less mature.
 
 TimescaleDB~\parencite{timescaledb-ref} was preferred over InfluxDB for time-series storage. As a PostgreSQL
 extension, it runs on the same database server that already hosts the TSM configuration
-database and the \texttt{water\_dp} application schema --- no separate database system
+database and the \texttt{water\_dp} application schema; no separate database system
 to deploy and maintain. It brings
 automatic time-based chunking of hypertables, native compression for older chunks, and full
 SQL compatibility, so observations can be joined with configuration
@@ -506,7 +506,7 @@ and checking RS256 signatures.
 \label{sec:arch-tech-minio}
 
 MinIO~\parencite{minio-ref} was also kept from the upstream TSM stack. Its S3-compatible object storage
-runs without cloud service dependencies --- important for on-premise deployments at research
+runs without cloud service dependencies, which is important for on-premise deployments at research
 institutions. Each Thing gets its own MinIO bucket for raw data files. When a file lands
 in a bucket, MinIO fires an S3~event notification to MQTT, which triggers the file-ingest
 worker automatically. MinIO also stores user-uploaded parser scripts and

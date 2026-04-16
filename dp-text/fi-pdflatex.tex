@@ -38,27 +38,25 @@
     keywords    = {sensor data, environmental monitoring, OGC SensorThings API, MQTT, TimescaleDB, FastAPI, Next.js, Docker, eLTER},
     TeXkeywords = {sensor data, environmental monitoring, OGC SensorThings~API, MQTT, TimescaleDB, FastAPI, Next.js, Docker, eLTER},
     abstract    = {%
-      This thesis designs and implements a platform for real-time environmental sensor data
-      collection, integration, and visualization, targeting the operational needs of Czech
-      University of Life Sciences Prague (CZU) within the European eLTER long-term ecosystem
-      research infrastructure. The platform builds on the UFZ Time.IO open-source solution,
-      which provides MQTT-driven ingestion workers, per-sensor PostgreSQL/TimescaleDB schema
-      isolation, and OGC SensorThings API access via FROST-Server. A gap analysis reveals that
-      Time.IO lacks project-oriented data management, a user-facing portal, an alert system,
-      geospatial layer support, and a functional sensor management service. To address these
-      gaps, the thesis contributes three components: (1)~a targeted adaptation of the
-      \texttt{tsm-orchestration} stack with local STA views replacing the non-functional
-      upstream SMS service, modular Compose structure, and Podman rootless support;
-      (2)~\texttt{water-dp}, a new application layer built with FastAPI and Next.js~15 that
-      provides project-based sensor management, MQTT-triggered alert evaluation, GeoServer
-      integration, and a multilingual web portal; and (3)~\texttt{hydro-deploy}, a unified
-      deployment orchestrator merging both stacks via a single configuration file and
-      Makefile-based operator interface. The platform is validated through 1,024 automated
-      tests and a requirements evaluation covering 24~functional and 8~non-functional
-      requirements. The thesis concludes that while the architectural ideas behind
-      Time.IO --- per-Thing isolation, MQTT event pipelines, and OGC~STA compliance --- are
-      sound, a purpose-built rewrite targeting eLTER-specific requirements is the more
-      sustainable path forward than continued adaptation of the upstream codebase.
+      Environmental monitoring networks generate continuous streams of heterogeneous
+      sensor data that must be ingested, quality-controlled, stored, and made accessible
+      through standard interfaces. This thesis builds on the UFZ Time.IO open-source
+      platform to create a working deployment for Czech University of Life Sciences
+      Prague within the context of the European eLTER research infrastructure.
+
+      A systematic analysis of Time.IO revealed that key capabilities were missing or
+      broken: there was no project-oriented data management, no user-facing portal, and
+      the standards-based data access layer was non-functional. The thesis addresses
+      these gaps through three components: an adaptation of the upstream ingestion
+      stack that restores its core functionality, a new application layer providing
+      sensor management, alerting, and a multilingual web portal, and a deployment
+      orchestrator that unifies the two stacks into a single operator workflow.
+
+      The result is a containerized platform validated through over a thousand automated
+      tests and a full requirements evaluation. The experience shows that the
+      architectural ideas behind Time.IO are sound, but a purpose-built implementation
+      targeting eLTER's specific needs would be more sustainable than continued
+      adaptation of the upstream codebase.
     },
     declaration = {%
       Hereby I declare that this paper is my original authorial work,
@@ -77,9 +75,14 @@
       and correctness of the entire thesis.
     },
     thanks      = {%
-      % TODO: Write acknowledgements.
-      I would like to thank my advisor, RNDr. Tom\'{a}\v{s} Rebok, Ph.D., for his guidance throughout this work.
-      TODO: complete acknowledgements.
+      I would like to thank my advisor, RNDr. Tom\'{a}\v{s} Rebok, Ph.D., for his
+      guidance and feedback throughout this work, and for introducing the
+      eLTER context that shaped the platform's direction.
+
+      I also thank prof. Ing. Martin Hanel, Ph.D., from the Faculty of
+      Environmental Sciences at the Czech University of Life Sciences Prague,
+      for discussions on the hydrological monitoring requirements that
+      informed the platform design.
     },
     bib         = thesis.bib,
     facultyLogo = fithesis-fi,

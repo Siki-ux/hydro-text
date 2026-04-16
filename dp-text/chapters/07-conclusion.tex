@@ -39,7 +39,7 @@ documentation was absent. \texttt{water-dp} exists precisely because of these sh
 \addcontentsline{toc}{section}{Limitations}
 
 The biggest limitation is the continued reliance on \texttt{TSM-TEMP}
-workarounds. Across \texttt{tsm-orchestration}, 19~marked locations bypass the non-functional
+workarounds. Across \texttt{tsm-orchestration}, 18~marked locations bypass the non-functional
 upstream SMS service with local PostgreSQL views. These views work well operationally
 (Section~\ref{sec:impl-tsm-assessment}), but they carry the label of temporary fixes against a
 codebase whose upstream shows no sign of addressing the root cause.
@@ -51,8 +51,8 @@ modules depend on external services that are hard to exercise without a running
 FROST-Server and Keycloak instance.
 
 Performance has not been benchmarked at scale beyond the CZU sensor fleet. The primary
-bottleneck identified --- synchronous FROST-Server query processing
-(Section~\ref{sec:test-perf-bottleneck}) --- would become critical at deployments with
+bottleneck identified, HTTP request fan-out to FROST-Server's per-thing context paths
+(Section~\ref{sec:test-perf-bottleneck}), would become critical at deployments with
 thousands of Things. Quantitative throughput measurements under realistic multi-site load
 remain future work.
 
@@ -77,14 +77,14 @@ The concrete future work items are:
   \item \textbf{TSM component rewrite.} Replace the \texttt{TSM-TEMP} workarounds
         and the non-functional SMS service with a clean STA view layer that is maintained
         as part of the platform rather than labeled as temporary. The rewrite scope is
-        well-defined: 19~marked locations in one Python module and one SQL directory.
+        well-defined: 18~marked locations in one Python module and one SQL directory.
 
   \item \textbf{eLTER metadata integration.} Extend the project and sensor models
         with eLTER-specific metadata (DEIMS-SDR identifiers, EnvThes vocabulary bindings,
         habitat classifications) to enable the platform to serve as an eLTER site node.
 
   \item \textbf{Cross-site federation.} Implement a federation layer for aggregated
-        queries across independently operated platform instances --- a prerequisite for
+        queries across independently operated platform instances, a prerequisite for
         eLTER's distributed, multi-site architecture.
 
   \item \textbf{FAIR data compliance.} Add persistent identifiers (DOIs), structured
@@ -110,5 +110,3 @@ sensor networks. The experience of this thesis suggests that the concept behind 
 a modular, MQTT-driven, STA-compliant sensor data platform --- is sound, but a purpose-built
 implementation targeting eLTER's specific requirements would be more effective than continued
 adaptation of an upstream codebase that does not prioritise external adopters.
-the per-thing schema model to FROST --- a gap that motivated the local STA views approach and that remains the
-most important open item for future development.

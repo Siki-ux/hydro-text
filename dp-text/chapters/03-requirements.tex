@@ -342,15 +342,13 @@ requirements it blocks, and the component that addresses the gap in this thesis.
         language support is required for CZU users.
         \emph{(FR-25)} & \texttt{water-dp} \\[6pt]
 
-  %% G-10 removed — computation framework decommissioned.
-
-  G-11 & \textbf{Upstream frontend bugs.} Both \texttt{tsm-frontend} (Django)
+  G-10 & \textbf{Upstream frontend bugs.} Both \texttt{tsm-frontend} (Django)
          and \texttt{thing-management} (Vue.js) generated MQTT configuration
          messages that did not match the ingestion pipeline's expectations,
          causing silent provisioning failures.
          \emph{(FR-6, FR-7)} & \texttt{water-dp} \\[6pt]
 
-  G-12 & \textbf{Hardcoded parsers and device types.} All file parsers, MQTT
+  G-11 & \textbf{Hardcoded parsers and device types.} All file parsers, MQTT
          device-type parsers, and API syncers are implemented as Python classes
          compiled into the Docker image. Adding support for a new sensor model
          or file format requires source-code changes and redeployment; there is
@@ -362,7 +360,7 @@ requirements it blocks, and the component that addresses the gap in this thesis.
 
 The eleven gaps identified in Table~\ref{tab:gap-analysis} define the scope of the three
 contributions described in Chapters~\ref{chap:architecture} and~\ref{chap:implementation}:
-the \texttt{water-dp} application layer addresses gaps~G-1--G-3 and G-6--G-9, G-11, and G-12,
+the \texttt{water-dp} application layer addresses gaps~G-1--G-3 and G-6--G-11,
 the TSM adaptations address gaps~G-4 and~G-5, and the \texttt{hydro-deploy} deployment
 orchestrator addresses gaps~G-7 and~G-8. Each gap is revisited in the requirements evaluation
 in Chapter~\ref{chap:testing}.

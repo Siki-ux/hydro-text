@@ -1,8 +1,8 @@
 \chapter{Testing and Evaluation}
 \label{chap:testing}
 
-The platform is evaluated against the requirements from Chapter~\ref{chap:requirements}.
-Section~\ref{sec:test-approach} outlines the testing strategy used. The requirements
+Evaluation of the platform proceeds against the requirements from Chapter~\ref{chap:requirements}.
+Section~\ref{sec:test-approach} outlines the testing strategy used. Requirements
 are assessed one by one in Section~\ref{sec:test-requirements}. Performance and scalability
 considerations follow in Section~\ref{sec:test-performance}, and Section~\ref{sec:test-deployment}
 covers the CZU deployment and the path to eLTER adoption.
@@ -12,7 +12,7 @@ covers the CZU deployment and the path to eLTER adoption.
 \label{sec:test-approach}
 %% ----------------------------------------------------------------
 
-The platform is tested at three levels: automated unit and integration tests for the
+Testing operates at three levels: automated unit and integration tests for the
 \texttt{water-dp} backend and frontend, automated tests inherited from the upstream
 \texttt{tsm-orchestration} codebase, and manual end-to-end verification of the full
 deployment.
@@ -20,13 +20,13 @@ deployment.
 \subsection{Backend Test Suite}
 \label{sec:test-approach-backend}
 
-The \texttt{water-dp} backend includes a pytest-based test suite comprising 797~test
-functions across 43~test files, organized into five directories:
+A pytest-based test suite covering 797~test
+functions across 43~test files is included with the \texttt{water-dp} backend, organized into five directories:
 \texttt{test\_api/} (endpoint-level tests), \texttt{test\_services/} (business-logic tests),
 \texttt{test\_core/} (middleware, security, and exception handling), \texttt{test\_schemas/}
 (Pydantic model validation), and \texttt{test\_tasks/} (Celery background tasks).
 
-The test fixtures are defined in \texttt{conftest.py}. A \texttt{mock\_db\_session} fixture
+Test fixtures are defined in \texttt{conftest.py}. A \texttt{mock\_db\_session} fixture
 provides a \texttt{MagicMock(spec=Session)} for SQLAlchemy interactions. The \texttt{client}
 fixture creates a FastAPI \texttt{TestClient} with dependency overrides that inject the mocked
 database session and an authenticated admin user, enabling endpoint tests to run without a
@@ -35,7 +35,7 @@ the application from running database initialization at startup.
 
 Custom pytest markers (\texttt{api}, \texttt{services}, \texttt{core}, \texttt{v1}) are
 assigned automatically based on the test file's directory, enabling selective test execution.
-The default configuration in \texttt{pytest.ini} excludes tests marked as
+By default, \texttt{pytest.ini} excludes tests marked as
 \texttt{integration}, which require a live PostgreSQL instance.
 
 Coverage is measured with \texttt{pytest-cov} against the \texttt{app/} package. The
@@ -63,7 +63,7 @@ and resolves import aliases through the same path mapping used in production.
 \subsection{TSM Orchestration Tests}
 \label{sec:test-approach-tsm}
 
-The upstream \texttt{tsm-orchestration} repository contains 131~test functions covering
+Upstream \texttt{tsm-orchestration} contains 131~test functions covering
 parser implementations (CSV, JSON), worker scripts (file ingest, crontab setup), external
 API syncers (DWD, TTN, Bosch, T-Systems, UBA), Grafana API integration, and cryptographic
 utilities. These tests were inherited with the fork and continue to pass against the
@@ -72,7 +72,7 @@ modified codebase.
 \subsection{Manual End-to-End Verification}
 \label{sec:test-approach-e2e}
 
-Full-stack scenarios are verified manually against a running deployment. The primary
+Full-stack scenarios are verified manually against a running deployment. A primary
 verification path traces the complete Thing lifecycle: sensor creation through the portal,
 infrastructure provisioning by TSM workers (observable through container logs and database
 schema creation), data ingestion via MQTT or CSV upload, observation availability through
@@ -290,9 +290,9 @@ Section~\ref{sec:req-gap} to their resolution status.
          files; rootless-specific UID/GID and network fixes applied. \\[3pt]
   G-9  & Resolved & Three locale files (EN, CS, SK) with Zustand-persisted
          language switching. \\[3pt]
-  G-11 & Resolved & \texttt{TimeIOOrchestrator} generates MQTT configuration
+  G-10 & Resolved & \texttt{TimeIOOrchestrator} generates MQTT configuration
          messages compatible with the ingestion pipeline. \\[3pt]
-  G-12 & Resolved & SMS catalog endpoints for parser and device-type CRUD;
+  G-11 & Resolved & SMS catalog endpoints for parser and device-type CRUD;
          dynamic parser loading from MinIO. \\
 \end{longtable}
 
@@ -314,25 +314,25 @@ with the known bottlenecks.
 \label{sec:test-perf-timescaledb}
 
 TimescaleDB partitions each per-thing observation table into time-based chunks. Time-range
-queries --- the dominant access pattern for chart rendering --- benefit from chunk exclusion:
+queries, the dominant access pattern for chart rendering, benefit from chunk exclusion:
 the query planner skips chunks outside the requested interval, reducing I/O to the relevant
 time window. Older chunks are compressed automatically, further reducing storage requirements
 and improving sequential scan throughput for historical queries.
 
-The per-thing schema isolation provides an additional performance benefit: queries for one
+Per-thing schema isolation provides an additional performance benefit: queries for one
 sensor's data never scan another sensor's observation table, even when many sensors are
 onboarded. This eliminates cross-sensor interference regardless of data volume.
 
 \subsection{API Throughput}
 \label{sec:test-perf-api}
 
-The FastAPI backend uses asynchronous request handlers with \texttt{httpx}-based FROST
-client calls, enabling the API to serve multiple concurrent requests without blocking on
+Asynchronous request handlers with \texttt{httpx}-based FROST
+client calls enable the FastAPI backend to serve multiple concurrent requests without blocking on
 FROST-Server responses. The \texttt{AsyncFrostClient} maintains a connection pool
 (100~maximum connections, 20~keep-alive) to reduce TCP handshake overhead for repeated
 FROST queries.
 
-The Locust load testing suite included in the repository enables throughput measurement
+A Locust load testing suite included in the repository enables throughput measurement
 under simulated multi-user load. The tests authenticate against Keycloak and exercise the
 primary API operations (project listing, sensor queries, observation retrieval) with
 configurable concurrency.
@@ -340,21 +340,20 @@ configurable concurrency.
 \subsection{Known Bottleneck}
 \label{sec:test-perf-bottleneck}
 
-FROST-Server represents the main performance bottleneck. As a synchronous Java application
-running on Tomcat, it processes STA queries sequentially within each thread. When the
-\texttt{water-dp} API fetches sensor metadata for a project with many Things, each
-FROST query must finish before the next one starts. \texttt{AsyncThingService}
-mitigates this by firing FROST requests concurrently via \texttt{httpx} connection pooling,
-but FROST-Server itself remains the throughput ceiling. Swapping FROST for a lighter STA
-implementation or adding a caching layer for frequently accessed metadata are potential
-future optimizations.
+The main performance bottleneck is the HTTP request fan-out to FROST-Server. Each
+per-thing schema is served through its own FROST context path, so when the
+\texttt{water-dp} API fetches sensor metadata for a project with many Things, it must
+issue a separate HTTP request for each Thing. \texttt{AsyncThingService} mitigates
+this by firing requests concurrently via \texttt{httpx} connection pooling, but the
+fan-out pattern remains the throughput ceiling at scale. Adding a Redis caching layer
+for frequently accessed metadata is a potential future optimization.
 
 %% ----------------------------------------------------------------
 \section{Deployment on CZU Infrastructure and eLTER Path}
 \label{sec:test-deployment}
 %% ----------------------------------------------------------------
 
-The platform was deployed on CZU infrastructure as the primary validation environment
+On CZU infrastructure, the platform was deployed as the primary validation environment
 for this thesis. This section documents the deployment, evaluates the platform's
 readiness for adoption within the eLTER research infrastructure, and assesses the
 long-term sustainability of the TSM-TEMP workarounds.
@@ -420,20 +419,9 @@ deployment) are already in place.
 \subsection{Sustainability of the TSM-TEMP Workarounds}
 \label{sec:test-deployment-tsmtemp}
 
-Section~\ref{sec:impl-tsm-assessment} assessed the TSM-TEMP workarounds from an
-implementation perspective. The codebase contains 19~marked locations, concentrated
-in \texttt{setup\_user\_database.py} and \texttt{sta\_views\_local/}. From a
-sustainability perspective, two observations are relevant.
-
-First, the local STA views have no operational disadvantages relative to the
-SMS-backed alternative: they query tables the platform already manages, avoid
-foreign-table lookups, and require no additional infrastructure. The migration path
-back to upstream views remains documented, but the practical benefit of reverting is
-questionable.
-
-Second, the upstream SMS service has remained non-functional throughout the duration
-of this thesis, and no public roadmap for its restoration has been communicated. This
-reinforces the conclusion stated in Section~\ref{sec:impl-tsm-assessment}: a targeted
-rewrite of the affected components --- replacing them with a clean implementation
-rather than workarounds labeled as temporary --- is the more defensible long-term
-strategy than waiting for an upstream fix with no guaranteed timeline.
+The 18~\texttt{TSM-TEMP} marked locations in the codebase, concentrated in
+\texttt{setup\_user\_database.py} and \texttt{sta\_views\_local/}, have shown no
+operational disadvantages throughout the deployment period. The upstream SMS service
+has remained non-functional throughout the duration of this thesis, and no public
+roadmap for its restoration has been communicated. The assessment and recommended
+migration path are discussed in Section~\ref{sec:impl-tsm-assessment}.
