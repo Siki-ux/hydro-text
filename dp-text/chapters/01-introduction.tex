@@ -3,14 +3,23 @@
 \addcontentsline{toc}{chapter}{Introduction}
 \label{chap:intro}
 
-Environmental monitoring of river systems and catchment areas generates continuous streams of heterogeneous sensor data from
-devices produced by different manufacturers, communicating over different protocols, and structured according to different
-data models. Managing this diversity at scale, from data acquisition in the field through ingestion, quality control,
-storage, and visualization, is a non-trivial engineering problem, particularly for research institutions that operate
-many sensors across geographically distributed sites.
+Environmental sensor networks have become essential infrastructure for understanding natural and built environments.
+They operate across a wide range of domains: river gauging stations and catchment areas track water level, discharge,
+and quality; urban installations measure air pollution, noise, and microclimate in cities; agricultural plots record
+soil moisture, nutrient levels, and crop growth; biodiversity surveys deploy acoustic and camera-trap sensors in
+forests and wetlands; and unmanned aerial vehicles carry multispectral or LiDAR payloads over landscapes that are
+difficult to instrument permanently. Each of these domains produces continuous streams of heterogeneous data from
+devices manufactured by different vendors, communicating over different protocols, and structured according to
+different data models.
 
-Czech University of Life Sciences Prague (CZU) is one such institution. Its sensor infrastructure spans river gauging
-stations, catchment monitoring networks, and experimental plots, with instruments recording water level, conductivity,
+Managing this diversity at scale, from data acquisition in the field through ingestion, quality control, storage,
+and visualization, is a non-trivial engineering problem. Environmental research institutions, national park
+authorities, water management agencies, and university departments all face the same challenge: integrating
+sensors across geographically distributed sites into a single, standards-compliant data infrastructure.
+
+Czech University of Life Sciences Prague (CZU) is one such institution. As a university focused on life sciences,
+agriculture, and environmental research, CZU operates sensor infrastructure spanning river gauging stations,
+catchment monitoring networks, and experimental field plots, with instruments recording water level, conductivity,
 temperature, turbidity, and other environmental parameters. Prior to this work, no unified platform existed to manage
 this infrastructure in a coherent, standards-compliant way.
 
@@ -19,32 +28,46 @@ candidate foundation. Rather than building a full environmental data management 
 investigates whether Time.IO can be adapted to meet the operational requirements of a real institutional deployment,
 and implements the extensions needed to close the gap between the upstream system and those requirements.
 
-The platform must also be positioned within the broader context of the European eLTER (Long-Term Ecosystem Research)
-infrastructure, which was actively evaluating Time.IO as a candidate for standardized data acquisition across its
-network of research sites at the time this work was assigned. The CZU deployment therefore serves a dual purpose:
-it addresses a concrete operational need at CZU, and it provides evidence for or against the suitability of the
-adapted platform for wider eLTER adoption.
+The platform must also be positioned within the broader context of the eLTER research
+infrastructure, for which Time.IO serves as the time-series data acquisition component.
+The CZU deployment therefore serves a dual purpose: it addresses a concrete operational
+need at CZU, and it provides evidence for or against the suitability of the adapted
+platform for wider eLTER adoption.
 
 \medskip\noindent
 The goals of this thesis are:
 \begin{enumerate}
   \item To analyze the capabilities and limitations of the UFZ Time.IO system with respect to the CZU and eLTER
         deployment requirements.
-  \item To design and implement the \texttt{water-dp} application layer providing project-oriented sensor management,
+  \item To design and implement the Water Data Platform (repository \texttt{water-dp}),
+        an application layer providing project-oriented sensor management,
         MQTT-driven alert evaluation, geospatial integration, and a multilingual user portal.
-  \item To implement the \texttt{hydro-deploy} unified deployment orchestrator enabling single-command installation
-        of the complete integrated stack.
+  \item To implement a unified deployment layer (repository \texttt{hydro-deploy})
+        enabling single-command installation of the complete integrated stack.
   \item To evaluate the resulting platform against the identified requirements and reflect on its suitability for
         broader adoption within the eLTER infrastructure.
 \end{enumerate}
 
 \medskip\noindent
-The thesis is structured as follows.
-Chapter~\ref{chap:background} provides background on environmental sensor data management, the OGC SensorThings API
-standard, the UFZ Time.IO solution, and the eLTER infrastructure.
-Chapter~\ref{chap:requirements} derives the requirements from the CZU use cases and performs a gap analysis
-against the baseline Time.IO system.
-Chapter~\ref{chap:architecture} presents the architecture of the resulting platform.
-Chapter~\ref{chap:implementation} describes the implementation of all three platform components.
-Chapter~\ref{chap:testing} evaluates the platform against the requirements and discusses performance and deployment.
+The thesis follows a progression from understanding the problem domain to building and validating a solution.
+Chapter~\ref{chap:background} first establishes the necessary context: the landscape of environmental sensor data
+management, the OGC SensorThings API standard on which the platform relies, the upstream UFZ Time.IO system that
+serves as the foundation, the institutional context linking the CZU deployment to the eLTER network through the
+Time.IO adoption, and the eLTER research infrastructure whose data integration requirements constrain the design. This background
+is essential because the design decisions in later chapters depend directly on the capabilities and constraints of
+these existing technologies.
+
+Building on this foundation, Chapter~\ref{chap:requirements} translates the CZU operational needs into concrete
+requirements and performs a gap analysis against the baseline Time.IO system. The gaps identified here determine
+the scope of the implementation work that follows.
+
+Chapter~\ref{chap:architecture} then presents the architecture designed to close those gaps, explaining how
+the two runtime layers, the inherited TSM ingestion infrastructure and the new
+data platform application layer, interact and why they are structured as separate but integrated components.
+Chapter~\ref{chap:implementation} justifies the major technology selections and describes the
+realization of this architecture, including the unified deployment layer.
+
+Finally, Chapter~\ref{chap:testing} evaluates the resulting platform against the requirements defined earlier,
+verifying that the identified gaps have been addressed and assessing the platform's readiness for production
+deployment.
 Chapter~\ref{chap:conclusion} summarizes the contributions, reflects on limitations, and outlines future work.

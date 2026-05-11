@@ -83,7 +83,7 @@ lualatex fi-lualatex.tex → biber fi-lualatex → lualatex × 2
 
 ## LaTeX Conventions
 
-- Citations: `\parencite{key}` (parenthetical), `\textcite{key}` (inline author)
+- Citations: `\cite{key}` (numeric in square brackets)
 - File/function names in text: `\texttt{filename.py}`
 - Cross-references: always `\ref{label}` — never "as mentioned above"
 - Figure captions: below figure, include `\emph{Source: author}`

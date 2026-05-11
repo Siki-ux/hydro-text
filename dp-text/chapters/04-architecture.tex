@@ -2,21 +2,37 @@
 \label{chap:architecture}
 
 The gaps identified in Chapter~\ref{chap:requirements} shaped the platform architecture
-presented here. Section~\ref{sec:arch-overview} lays out the
-overall system design and the rationale behind the three-component split.
+presented here. The design builds on the upstream Time.IO system
+(Section~\ref{sec:bg-timeio}) as the infrastructure layer and adds a new application
+layer on top. The components fall into three categories by provenance:
+
+\begin{description}
+  \item[Inherited (upstream).] Components taken from the UFZ Time.IO platform and
+    used without modification: PostgreSQL/TimescaleDB, Mosquitto, MinIO, FROST-Server,
+    Keycloak, Grafana, and Flyway.
+  \item[Inherited and modified.] Components forked from upstream and extended or fixed
+    as part of this thesis: the ingestion workers, the per-thing schema provisioning
+    logic, the FROST-Server SQL views (replaced), and the configuration database schema
+    (new migrations).
+  \item[New.] Components designed and implemented entirely in this thesis: the
+    Water Data Platform application layer (FastAPI backend, Next.js frontend, Celery
+    worker, GeoServer integration), the alert system, the batch import pipeline,
+    and the project-oriented data model.
+\end{description}
+
+Section~\ref{sec:arch-overview} lays out the
+overall system design and the rationale behind the two-layer split.
 Section~\ref{sec:arch-components} defines each component's responsibility boundaries.
 The database design, including the per-thing schema pattern and the local STA views,
 follows in Section~\ref{sec:arch-database}. Section~\ref{sec:arch-mqtt} details the
-MQTT-driven event architecture, Section~\ref{sec:arch-technology} justifies
-the major technology selections, and Section~\ref{sec:arch-deployment} covers the
-deployment strategy with Docker Compose multi-file merging and rootless Podman support.
+MQTT-driven event architecture.
 
 %% ----------------------------------------------------------------
 \section{Overall System Architecture}
 \label{sec:arch-overview}
 %% ----------------------------------------------------------------
 
-The platform is composed of three repositories with distinct runtime roles, illustrated in
+The platform is composed of two runtime layers, illustrated in
 Figure~\ref{fig:arch-overview}.
 
 \begin{landscape}
@@ -24,6 +40,8 @@ Figure~\ref{fig:arch-overview}.
   \centering
   \begin{tikzpicture}[
     box/.style={draw, thick, minimum width=3.2cm, minimum height=1cm, align=center, font=\small},
+    newbox/.style={box, fill=blue!8},
+    modbox/.style={box, fill=orange!12},
     layer/.style={draw, thick, rounded corners=3pt, inner sep=14pt},
     arr/.style={-{Stealth[length=5pt]}, thick},
     lbl/.style={font=\scriptsize, fill=white, inner sep=2pt},
@@ -42,25 +60,25 @@ Figure~\ref{fig:arch-overview}.
     \node[font=\normalsize\bfseries] (user) at (7.5, 1) {Researcher};
 
     %% ── water-dp (label above-left, away from arrow landing) ──
-    \node[layer] (wdp) at (3, -3.5) [minimum width=7cm, minimum height=5cm] {};
-    \node[font=\small\bfseries, anchor=south west] at (wdp.north west) {water-dp (application layer)};
-    \node[box] (frontend) at (1.2, -2.2) {Next.js\\Frontend};
-    \node[box] (api)      at (4.8, -2.2) {FastAPI\\Backend};
-    \node[box] (celery)   at (1.2, -3.8) {Celery\\Worker};
-    \node[box] (geo)      at (4.8, -3.8) {GeoServer};
+    \node[layer, fill=blue!4] (wdp) at (3, -3.5) [minimum width=7cm, minimum height=5cm] {};
+    \node[font=\small\bfseries, anchor=south west] at (wdp.north west) {Water Data Platform (application layer) --- \emph{new}};
+    \node[newbox] (frontend) at (1.2, -2.2) {Next.js\\Frontend};
+    \node[newbox] (api)      at (4.8, -2.2) {FastAPI\\Backend};
+    \node[newbox] (celery)   at (1.2, -3.8) {Celery\\Worker};
+    \node[newbox] (geo)      at (4.8, -3.8) {GeoServer};
 
     %% ── tsm-orchestration (label above-left, away from arrow landing) ──
-    \node[layer] (tsm) at (12, -3.5) [minimum width=7cm, minimum height=5cm] {};
+    \node[layer, fill=orange!4] (tsm) at (12, -3.5) [minimum width=7cm, minimum height=5cm] {};
     \node[font=\small\bfseries, anchor=south west] at (tsm.north west)
-      {tsm-orchestration (infrastructure layer)};
+      {tsm-orchestration (infrastructure layer) --- \emph{inherited \& modified}};
     \node[box] (frost)   at (10.2, -2.2) {FROST-Server};
     \node[box] (kc)      at (13.8, -2.2) {Keycloak};
     \node[box] (grafana) at (10.2, -3.8) {Grafana};
-    \node[box] (workers) at (13.8, -3.8) {Ingestion\\Workers};
+    \node[modbox] (workers) at (13.8, -3.8) {Ingestion\\Workers};
     \node[box] (cron)    at (12,   -5.2) {Cron Scheduler};
 
     %% ── Shared Data Layer ──
-    \node[layer, label={[font=\small\bfseries]north:Shared Data Layer}]
+    \node[layer, label={[font=\small\bfseries]north:Shared Data Layer --- \emph{inherited (upstream)}}]
       (data) at (7.5, -9) [minimum width=14cm, minimum height=2.2cm] {};
     \node[box] (db)    at (4,   -9) {PostgreSQL +\\TimescaleDB};
     \node[box] (minio) at (7.5, -9) {MinIO (S3)};
@@ -91,38 +109,45 @@ Figure~\ref{fig:arch-overview}.
     %% 6. MQTT Device → Mosquitto (horizontal)
     \draw[arr] (device.west) -- node[lbl, above] {MQTT/TLS} (mqtt.east);
 
+    %% ═══════ LEGEND ═══════
+    \node[newbox, minimum width=1.2cm, minimum height=0.5cm] (leg1) at (1, -11) {};
+    \node[right=2pt of leg1, font=\scriptsize] {New (this thesis)};
+    \node[modbox, minimum width=1.2cm, minimum height=0.5cm] (leg2) at (5.5, -11) {};
+    \node[right=2pt of leg2, font=\scriptsize] {Inherited \& modified};
+    \node[box, minimum width=1.2cm, minimum height=0.5cm] (leg3) at (10.5, -11) {};
+    \node[right=2pt of leg3, font=\scriptsize] {Inherited (upstream)};
+
   \end{tikzpicture}
   \caption{High-level architecture of the Hydro Platform.}
   \label{fig:arch-overview}
 \end{figure}
 \end{landscape}
 
-\textbf{tsm-orchestration} forms the infrastructure layer: a Mosquitto MQTT broker,
+\textbf{tsm-orchestration} forms the infrastructure layer (inherited and modified): a Mosquitto MQTT broker,
 PostgreSQL with TimescaleDB for time-series storage, FROST-Server for OGC SensorThings~API
 access, MinIO for S3-compatible object storage, Keycloak for identity management, Grafana for
 visualization, and a set of Python-based ingestion workers. It is a heavily modified
 fork of the upstream UFZ Time.IO platform described in Section~\ref{sec:bg-timeio}.
+The infrastructure services themselves (database, broker, object store) are used as-is;
+the modifications concentrate in the ingestion workers, the SQL views for FROST-Server,
+and the database schema migrations.
 
-\textbf{water-dp} sits on top as the application layer: a FastAPI backend, a Next.js frontend portal,
-a Celery worker for background tasks, GeoServer for geospatial layer management, and Redis as
+\textbf{The Water Data Platform} (repository \texttt{water-dp}) sits on top as the application layer (new): a FastAPI backend, a Next.js frontend portal,
+a Celery\footnote{Celery distributed task queue: \url{https://docs.celeryq.dev/}} worker for background tasks, GeoServer for geospatial layer management, and Redis\footnote{Redis in-memory data store: \url{https://redis.io/}} as
 the Celery message broker. It owns all application-level concepts (projects,
 alerts, geospatial layers, sensor activity tracking) absent from the upstream TSM platform.
+This entire layer was designed and implemented as part of this thesis.
 
-\textbf{hydro-deploy} has no runtime presence. It merges
-the Docker Compose files from both stacks into a single project, manages shared secrets, and
-exposes a Makefile-based operator interface. Both stacks can still be
-deployed and operated individually; hydro-deploy simply lets them run as a single unit.
-
-Keeping the adapted upstream infrastructure separate from the new application logic was
+Keeping the inherited infrastructure separate from the new application logic was
 a deliberate choice. The boundary means that upstream TSM updates
 can be merged into the fork without conflicting with application-layer code, and that
-\texttt{water-dp} can be developed and tested against a running TSM instance without modifying
-it. The deployment orchestrator stays separate so that neither runtime stack depends on it.
+the data platform can be developed and tested against a running TSM instance without modifying
+it.
 
 At runtime, all services communicate over a single Docker bridge network named
 \texttt{hydro-platform-net}. Each stack defines its own logical network name
 (\texttt{default}, \texttt{water\_shared\_net}, \texttt{tsm\_network}), and the
-\texttt{hydro-deploy} Compose file maps all three names to the same physical network.
+deployment layer Compose file maps all three names to the same physical network.
 This allows services to address each other by container name regardless of which stack
 defined them. The Nginx reverse proxy in \texttt{tsm-orchestration} serves as the single
 entry point, routing requests to the frontend (\texttt{/}), the API (\texttt{/water-api}),
@@ -135,7 +160,7 @@ FROST-Server (\texttt{/FROST-Server}), Grafana (\texttt{/grafana}), GeoServer
 %% ----------------------------------------------------------------
 
 Each component owns a well-defined set of responsibilities. The boundaries are enforced by
-the repository structure and the communication protocols: \texttt{water-dp} never writes
+the repository structure and the communication protocols: the data platform never writes
 directly to TSM-owned database tables, and TSM workers are unaware of application-level
 concepts such as projects or alerts.
 
@@ -161,10 +186,10 @@ The TSM stack owns the following responsibilities:
         management for both stacks.
 \end{itemize}
 
-\subsection{\texttt{water-dp}}
+\subsection{Water Data Platform}
 \label{sec:arch-components-waterdp}
 
-The water-dp stack owns all application-level features that were absent from the upstream
+The data platform owns all application-level features that were absent from the upstream
 TSM platform:
 
 \begin{itemize}
@@ -187,33 +212,16 @@ TSM platform:
         hardware.
 \end{itemize}
 
-\subsection{\texttt{hydro-deploy}}
-\label{sec:arch-components-hydrodeploy}
-
-The deployment orchestrator owns no runtime services. Its responsibilities are:
-
-\begin{itemize}
-  \item \textbf{Repository assembly.} The \texttt{make~setup} target clones both
-        runtime repositories and creates the shared \texttt{.env} file.
-  \item \textbf{Secret management.} The \texttt{generate-secrets.sh} script generates
-        cryptographically secure passwords and ensures that shared credentials
-        (database passwords, MQTT passwords, Keycloak admin credentials) are consistent
-        across stacks. Variables that must match are annotated with \texttt{@sync} markers.
-  \item \textbf{Compose file merging.} The Makefile assembles four Docker Compose files
-        into a single project using the \texttt{-f} flag, as described in
-        Section~\ref{sec:arch-deployment}.
-  \item \textbf{Podman support.} A Python preprocessing script transforms the Compose
-        files to work with rootless Podman, added by the author for quick local
-        deployment on a server without Docker daemon support.
-\end{itemize}
+%% hydro-deploy is a deployment convenience, not an architectural component.
+%% Its description is in Section~\\ref{sec:impl-hydro-deploy} (Implementation chapter).
 
 %% ----------------------------------------------------------------
 \section{Database Design}
 \label{sec:arch-database}
 %% ----------------------------------------------------------------
 
-The platform supports two database deployment variants. In the integrated deployment managed
-by \texttt{hydro-deploy}, both stacks share a single PostgreSQL instance with schema-level
+The platform supports two database deployment variants. In the integrated deployment,
+both stacks share a single PostgreSQL instance with schema-level
 isolation. In standalone mode, each stack runs its own database server. This section describes
 the shared variant, which is the primary deployment target.
 
@@ -237,7 +245,7 @@ The shared PostgreSQL instance contains three categories of schemas:
     \texttt{observation}, and \texttt{location} tables. The provisioning process is
     described in Section~\ref{sec:arch-db-perthings}.
 
-  \item[water\_dp schema] Owned by \texttt{water-dp}. Stores application-state tables
+  \item[water\_dp schema] Owned by the data platform. Stores application-state tables
     managed by Alembic migrations. The key tables are \texttt{projects} (project
     definitions with Keycloak group linkage), \texttt{project\_sensors} (Thing-to-project
     associations), \texttt{project\_members} (per-project RBAC with owner/editor/viewer
@@ -247,7 +255,7 @@ The shared PostgreSQL instance contains three categories of schemas:
     and \texttt{sensor\_activity\_configs} (inactivity monitoring).
 \end{description}
 
-The \texttt{water-dp} API connects to the shared database with
+The data platform API connects to the shared database with
 \texttt{search\_path=water\_dp,public}, which allows it to read TSM configuration tables
 in the \texttt{config\_db} schema through explicit schema-qualified queries while defaulting
 to the \texttt{water\_dp} schema for its own tables.
@@ -255,7 +263,7 @@ to the \texttt{water\_dp} schema for its own tables.
 \subsection{Standalone Deployment Variant}
 \label{sec:arch-db-standalone}
 
-When \texttt{water-dp} is deployed without \texttt{tsm-orchestration}, it starts its own
+When the data platform is deployed without \texttt{tsm-orchestration}, it starts its own
 PostgreSQL instance (\texttt{postgres-app}) with PostGIS. In this mode, the FROST~API client
 communicates with an external TSM deployment over HTTP rather than accessing per-thing schemas
 directly. The TSM integration overlay (\texttt{docker-compose.tsm.yml}) disables the standalone
@@ -315,7 +323,7 @@ is marked with the label \texttt{TSM-TEMP} in the codebase.
 %% ----------------------------------------------------------------
 
 The Mosquitto MQTT broker serves as the primary integration backbone between all TSM workers
-and the \texttt{water-dp} Celery worker. All workers follow a message-driven architecture:
+and the data platform Celery worker. All workers follow a message-driven architecture:
 each subscribes to one or more topics, performs its designated processing, and optionally
 publishes results to downstream topics. This design decouples the components and enables
 independent scaling.
@@ -337,7 +345,7 @@ and the data ingestion event flow is shown in Figure~\ref{fig:mqtt-data-ingestio
   \hline
   \endhead
   \texttt{frontend\_thing\_update}
-    & water-dp API
+    & Data platform API
     & configdb-updater \\[4pt]
   \texttt{configdb\_update}
     & configdb-updater
@@ -350,10 +358,10 @@ and the data ingestion event flow is shown in Figure~\ref{fig:mqtt-data-ingestio
     & file-ingest \\[4pt]
   \texttt{data\_parsed}
     & file-ingest, mqtt-ingest, sync-extapi
-    & run-qaqc, water-dp worker \\[4pt]
+    & run-qaqc, data platform worker \\[4pt]
   \texttt{qaqc\_done}
     & run-qaqc
-    & water-dp worker \\[4pt]
+    & data platform worker \\[4pt]
   \texttt{sync\_ext\_apis}
     & cron scheduler
     & sync-extapi \\[4pt]
@@ -389,7 +397,7 @@ and the data ingestion event flow is shown in Figure~\ref{fig:mqtt-data-ingestio
 \subsection{Thing Lifecycle}
 \label{sec:arch-mqtt-lifecycle}
 
-When a Thing is created or modified through the \texttt{water-dp} portal, the API publishes a
+When a Thing is created or modified through the data platform portal, the API publishes a
 configuration message to the \texttt{frontend\_thing\_update} topic. The configdb-updater
 worker receives the message, validates the content version, and upserts the configuration into
 the \texttt{config\_db} schema. Upon successful storage, it publishes a notification to
@@ -402,7 +410,7 @@ provisioned automatically without manual intervention.
 \subsection{Alert Evaluation}
 \label{sec:arch-mqtt-alerts}
 
-The \texttt{water-dp} Celery worker subscribes to two MQTT topics to integrate with the TSM
+The data platform Celery worker subscribes to two MQTT topics to integrate with the TSM
 event flow:
 
 \begin{itemize}
@@ -432,95 +440,16 @@ resolved). QA/QC alerts are automatically resolved when the flagged ratio drops 
 the threshold. Inactivity alerts are resolved when the sensor sends new data.
 
 %% ----------------------------------------------------------------
-\section{Technology Selection Justifications}
-\label{sec:arch-technology}
-%% ----------------------------------------------------------------
-
-The technology choices were driven by the requirements from Chapter~\ref{chap:requirements}
-and by maintainability concerns given the expected platform lifetime. Each major choice
-is justified below.
-
-\subsection{Backend: FastAPI}
-\label{sec:arch-tech-fastapi}
-
-FastAPI~\parencite{fastapi-ref} was chosen for the \texttt{water-dp} backend over Flask and Django. Its
-native \texttt{async}/\texttt{await} support is needed for non-blocking database
-queries (via SQLAlchemy~2.0 async sessions) and concurrent HTTP calls to FROST-Server and
-GeoServer. Pydantic request and response schemas generate OpenAPI documentation automatically,
-so a separate API specification does not need to be maintained. Flask lacks built-in
-async support and would need additional libraries for request validation. Django was
-considered too heavy for a service that acts primarily as an API layer and does not rely on Django's
-ORM, template engine, or admin interface.
-
-\subsection{Frontend: Next.js~15}
-\label{sec:arch-tech-nextjs}
-
-Next.js~15~\parencite{nextjs-ref} with the App Router was chosen for the frontend portal. React Server
-Components and server-side rendering let authentication-protected routes be rendered on
-the server, so unauthenticated users never receive page content. File-based
-routing cuts boilerplate, and built-in internationalization support simplifies
-the multilingual requirement (FR-25). A plain React single-page application would need a
-separate server for SSR and manual route configuration. Vue.js was considered, but at the time
-of selection its ecosystem for complex applications combining SSR, authentication middleware,
-and internationalization was less mature.
-
-\subsection{Time-Series Storage: TimescaleDB}
-\label{sec:arch-tech-timescaledb}
-
-TimescaleDB~\parencite{timescaledb-ref} was preferred over InfluxDB for time-series storage. As a PostgreSQL
-extension, it runs on the same database server that already hosts the TSM configuration
-database and the \texttt{water\_dp} application schema; no separate database system
-to deploy and maintain. It brings
-automatic time-based chunking of hypertables, native compression for older chunks, and full
-SQL compatibility, so observations can be joined with configuration
-tables without a gateway or translation layer. InfluxDB would have meant a separate
-deployment, a different query language (InfluxQL or Flux), and a synchronization mechanism
-between the two databases.
-
-\subsection{Geospatial Layer: GeoServer}
-\label{sec:arch-tech-geoserver}
-
-GeoServer~\parencite{geoserver-ref} handles geospatial layer management. It exposes standards-compliant
-OGC Web Map Service (WMS) and Web Feature Service (WFS) interfaces over PostGIS data, fitting
-the platform's broader reliance on OGC standards for interoperability.
-GeoServer is widely deployed in research institutions and supports workspaces, datastores, and
-layer publishing through a REST~API, which the \texttt{water-dp} backend calls for programmatic
-layer management. Geospatial features reside in PostGIS geometry columns (SRID
-4326) and are published through GeoServer to the frontend, which renders them with
-MapLibre~GL.
-
-\subsection{Authentication: Keycloak}
-\label{sec:arch-tech-keycloak}
-
-Keycloak~\parencite{keycloak-ref} was carried over from the upstream TSM stack. It offers a battle-tested OIDC
-implementation with realm and client management, group-based access control, and integration
-with external identity providers. A two-tier RBAC model splits responsibilities:
-Keycloak realm roles define platform-wide privileges (e.g.\ administrator), while the
-\texttt{project\_members} table in the \texttt{water\_dp} schema stores per-project roles.
-Keycloak groups link to projects through the \texttt{authorization\_provider\_group\_id}
-column, letting group membership govern project access without duplicating user management.
-JWT tokens are verified by fetching the JSON Web Key Set (JWKS) from the Keycloak endpoint
-and checking RS256 signatures.
-
-\subsection{Object Storage: MinIO}
-\label{sec:arch-tech-minio}
-
-MinIO~\parencite{minio-ref} was also kept from the upstream TSM stack. Its S3-compatible object storage
-runs without cloud service dependencies, which is important for on-premise deployments at research
-institutions. Each Thing gets its own MinIO bucket for raw data files. When a file lands
-in a bucket, MinIO fires an S3~event notification to MQTT, which triggers the file-ingest
-worker automatically. MinIO also stores user-uploaded parser scripts and
-external API syncer scripts used by the dynamic parser loading mechanism described in
-Section~\ref{sec:bg-timeio-parsers}.
-
-%% ----------------------------------------------------------------
 \section{Deployment Strategy}
 \label{sec:arch-deployment}
 %% ----------------------------------------------------------------
 
-The deployment is managed by \texttt{hydro-deploy}, which assembles the runtime stacks from
-multiple Docker Compose files and provides a Makefile-based operator interface. This section
-describes the Compose file merging strategy, secret management, and Makefile targets.
+The deployment is managed by a third repository, \texttt{hydro-deploy}, which has no
+runtime presence and is not part of the platform architecture itself. It assembles the
+runtime stacks from multiple Docker Compose files and provides a Makefile-based operator
+interface. Both stacks can be deployed and operated independently; the deployment layer
+simply lets them run as a single unit. This section describes the Compose file merging
+strategy, secret management, and Makefile targets.
 Rootless Podman is also supported as an alternative container runtime.
 
 \subsection{Compose File Merging}
@@ -533,7 +462,7 @@ extend services defined in earlier ones. The platform uses four Compose files in
   \item \texttt{tsm-orchestration/docker-compose.yml} --- defines all TSM core services
         (database, MQTT broker, FROST-Server, MinIO, Keycloak, Grafana, Nginx proxy,
         all ingestion workers, and the cron scheduler).
-  \item \texttt{water-dp/docker-compose.yml} --- defines the standalone \texttt{water-dp}
+  \item \texttt{water-dp/docker-compose.yml} --- defines the standalone data platform
         services (PostgreSQL with PostGIS, Redis, FastAPI API, GeoServer, Celery worker,
         Next.js frontend).
   \item \texttt{water-dp/docker-compose.tsm.yml} --- the TSM integration overlay. Disables
@@ -554,7 +483,7 @@ container for exposing the platform to the internet without a public IP address.
 A single \texttt{.env} file at the \texttt{hydro-deploy} root contains all credentials for
 both stacks. The \texttt{generate-secrets.sh} script generates cryptographically secure values
 using Python's \texttt{secrets} module. Passwords that must be identical across stacks (e.g.\
-the database password used by both TSM services and the \texttt{water-dp} API) are generated
+the database password used by both TSM services and the data platform API) are generated
 once and written to all corresponding variables. These pairs are annotated with \texttt{@sync}
 comments in the script. The script is idempotent: it replaces only placeholder values
 (\texttt{changeme} or empty strings) and never overwrites previously generated secrets.
@@ -570,11 +499,11 @@ The \texttt{hydro-deploy} Makefile exposes the following primary targets:
     configuration.
   \item[make secrets] Runs \texttt{generate-secrets.sh} to populate the \texttt{.env} file
     with cryptographically secure passwords.
-  \item[make build] Builds locally compiled Docker images (Keycloak themes, \texttt{water-dp}
+  \item[make build] Builds locally compiled Docker images (Keycloak themes, data platform
     API and frontend).
   \item[make up] Creates the \texttt{hydro-platform-net} network, then starts all services
     in a staged order: TSM core services first, then the GeoServer database, then
-    GeoServer, and finally the \texttt{water-dp} API, worker, and frontend.
+    GeoServer, and finally the data platform API, worker, and frontend.
   \item[make migrate] Applies pending Alembic database migrations for the \texttt{water\_dp}
     schema.
   \item[make seed] Populates the platform with test sensors and projects.

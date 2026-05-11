@@ -100,6 +100,8 @@
 \usepackage[babel]{csquotes} %% Context-sensitive quotation marks
 \usepackage{tikz}         %% Diagrams and figures
 \usetikzlibrary{shapes, arrows.meta, positioning, fit, backgrounds, calc}
+\usepackage{pgfplots}     %% Data-driven charts
+\pgfplotsset{compat=1.18}
 %% microtype is already loaded by fithesis4 with [final,babel,nopatch=item]
 \usepackage{pdflscape}     %% Landscape pages in portrait document
 
@@ -132,6 +134,9 @@
 \input{chapters/05-implementation}
 \input{chapters/06-testing}
 \input{chapters/07-conclusion}
+
+\input{chapters/08-appendix}
+\clearpage
 
 \printbibliography[heading=bibintoc]
 

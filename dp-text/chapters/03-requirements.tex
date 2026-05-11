@@ -24,49 +24,48 @@ APIs). An additional implicit actor is the \emph{TSM Ingestion Pipeline}, which 
 infrastructure and processes data on behalf of the other actors.
 
 The use cases are organized into three groups: data ingestion, platform management, and data
-consumption. These groups are illustrated in Figures~\ref{fig:uc-ingestion},
-\ref{fig:uc-management}, and~\ref{fig:uc-consumption}.
+consumption. These groups are illustrated in Figure~\ref{fig:uc-diagrams}.
 
 %% PlantUML source files live in figures/*.puml
 %% Regenerate PDFs: plantuml -tpdf figures/*.puml
 
-%% --- Use Case Diagram: Data Ingestion ---
+%% --- Use Case Diagrams (combined) ---
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{figures/uc-ingestion.pdf}
-  \caption{Use case diagram: data ingestion.}
-  \label{fig:uc-ingestion}
-\end{figure}
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/uc-ingestion.pdf}
+    \centerline{\small (a) Data ingestion}
+  \end{minipage}\hfill
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/uc-management.pdf}
+    \centerline{\small (b) Platform management}
+  \end{minipage}
 
-%% --- Use Case Diagram: Platform Management ---
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.85\textwidth]{figures/uc-management.pdf}
-  \caption{Use case diagram: platform management.}
-  \label{fig:uc-management}
-\end{figure}
+  \bigskip
 
-%% --- Use Case Diagram: Data Consumption ---
-%% NOTE: UC-16 (Run computation) removed — feature decommissioned.
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.85\textwidth]{figures/uc-consumption.pdf}
-  \caption{Use case diagram: data consumption.}
-  \label{fig:uc-consumption}
+  \begin{minipage}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{figures/uc-consumption.pdf}
+    \centerline{\small (c) Data consumption}
+  \end{minipage}
+  \caption{Use case diagrams for the three functional areas of the platform.}
+  \label{fig:uc-diagrams}
 \end{figure}
 
 The identified use cases are summarized in Table~\ref{tab:usecases}.
 %% UC-16 (Run computation) removed — feature decommissioned.
 
-\begin{longtable}{l p{0.58\textwidth} p{0.18\textwidth}}
+\begin{longtable}{l p{0.60\textwidth} l}
   \caption{Summary of use cases derived from the CZU deployment context.}
   \label{tab:usecases} \\
   \toprule
-  ID & Description & Primary actor \\
+  ID & Description & Actor \\
   \midrule
   \endfirsthead
   \toprule
-  ID & Description & Primary actor \\
+  ID & Description & Actor \\
   \midrule
   \endhead
   \midrule
@@ -171,7 +170,7 @@ in Chapter~\ref{chap:testing}.
 
 \begin{description}
   \item[FR-13] The system shall support configuring QA/QC test pipelines per project, using
-    functions from the SaQC (Statistical Quality Control) library with tunable parameters.
+    functions from the SaQC\footnote{SaQC --- System for automated Quality Control: \url{https://rdm-software.pages.ufz.de/saqc/}} (Statistical Quality Control) library with tunable parameters.
     \emph{(UC-9)}
   \item[FR-14] The system shall execute QA/QC tests automatically when new data is parsed
     (triggered by the \texttt{data\_parsed} MQTT event) and store quality flags alongside
@@ -257,14 +256,20 @@ The non-functional requirements govern the operational and quality properties of
     authentication endpoints. Credentials stored in the database shall be encrypted.
 
   \item[NFR-6] \textbf{Maintainability.} The codebase shall use database migrations (Alembic
-    for \texttt{water-dp}, Flyway for TSM) to manage schema evolution. The API shall generate
+    for the data platform, Flyway for TSM) to manage schema evolution. The API shall generate
     OpenAPI documentation automatically.
 
   \item[NFR-7] \textbf{eLTER interoperability alignment.} The architecture shall support
-    future extension toward eLTER metadata standards and cross-site federation without
-    requiring a fundamental redesign.
+    future integration with the eLTER CyberInfrastructure
+    (Section~\ref{sec:bg-elter-ci}) without requiring a fundamental redesign. Specifically,
+    the platform shall (a)~expose observation data through the OGC SensorThings API so that
+    it can be registered in the eLTER Online Asset Register, (b)~use an authentication layer
+    that can be federated with the eLTER~LogIn service, (c)~structure its data model so that
+    DEIMS-SDR site identifiers and eLTER controlled vocabularies (EnvThes) can be added as
+    extensions, and (d)~maintain per-site deployment independence consistent with eLTER's
+    site-autonomy principle.
 
-  \item[NFR-8] \textbf{Unified deployment.} The combined TSM and \texttt{water-dp} stacks shall
+  \item[NFR-8] \textbf{Unified deployment.} The combined TSM and data platform stacks shall
     be deployable through a single configuration file and Makefile, with automated secret
     generation and health checks.
 \end{description}
@@ -299,18 +304,18 @@ requirements it blocks, and the component that addresses the gap in this thesis.
   G-1 & \textbf{No project-oriented data model.} Time.IO organizes Things by
         configdb projects (Keycloak groups), but provides no application-level
         project entity with member roles or sensor assignment.
-        \emph{(FR-10--12)} & \texttt{water-dp} \\[6pt]
+        \emph{(FR-10--12)} & Data platform \\[6pt]
 
   G-2 & \textbf{No user-facing web portal.} The upstream frontends
         (\texttt{tsm-frontend}, \texttt{thing-management}) provide only basic
         Thing CRUD through Django or Vue.js admin interfaces. No unified portal
         with time-series visualization, map display, or alerting exists.
-        \emph{(FR-16--19)} & \texttt{water-dp} \\[6pt]
+        \emph{(FR-16--19)} & Data platform \\[6pt]
 
   G-3 & \textbf{No geospatial layer management.} Time.IO stores geographic
         coordinates in the configdb but provides no GIS integration, layer
         publishing, or spatial query capabilities.
-        \emph{(FR-17, FR-24)} & \texttt{water-dp} \\[6pt]
+        \emph{(FR-17, FR-24)} & Data platform \\[6pt]
 
   G-4 & \textbf{Non-functional local STA views.} The original local STA views
         contained issues that prevented FROST-Server from returning valid
@@ -325,28 +330,28 @@ requirements it blocks, and the component that addresses the gap in this thesis.
   G-6 & \textbf{No alert evaluation subsystem.} Time.IO provides no mechanism
         for threshold monitoring, no-data detection, or notification of
         anomalous conditions.
-        \emph{(FR-8, UC-8)} & \texttt{water-dp} \\[6pt]
+        \emph{(FR-8, UC-8)} & Data platform \\[6pt]
 
   G-7 & \textbf{No unified deployment mechanism.} The TSM and application
         stacks are separate Docker Compose deployments with no shared
         configuration, secret management, or health-check tooling.
-        \emph{(NFR-1, NFR-8)} & \texttt{hydro-deploy} \\[6pt]
+        \emph{(NFR-1, NFR-8)} & Deployment layer \\[6pt]
 
   G-8 & \textbf{No Podman rootless support.} The upstream Compose files use
         Docker-specific features (environment list format, disabled service
         references) that are incompatible with rootless Podman.
-        \emph{(NFR-1)} & \texttt{hydro-deploy} \\[6pt]
+        \emph{(NFR-1)} & Deployment layer \\[6pt]
 
   G-9 & \textbf{No multilingual interface.} The upstream frontends are
         English-only with no internationalization framework. Czech and Slovak
         language support is required for CZU users.
-        \emph{(FR-25)} & \texttt{water-dp} \\[6pt]
+        \emph{(FR-25)} & Data platform \\[6pt]
 
   G-10 & \textbf{Upstream frontend bugs.} Both \texttt{tsm-frontend} (Django)
          and \texttt{thing-management} (Vue.js) generated MQTT configuration
          messages that did not match the ingestion pipeline's expectations,
          causing silent provisioning failures.
-         \emph{(FR-6, FR-7)} & \texttt{water-dp} \\[6pt]
+         \emph{(FR-6, FR-7)} & Data platform \\[6pt]
 
   G-11 & \textbf{Hardcoded parsers and device types.} All file parsers, MQTT
          device-type parsers, and API syncers are implemented as Python classes
@@ -354,7 +359,7 @@ requirements it blocks, and the component that addresses the gap in this thesis.
          or file format requires source-code changes and redeployment; there is
          no runtime mechanism for users to register custom parsers or device
          types through a management interface.
-         \emph{(FR-5, FR-9, NFR-4)} & \texttt{water-dp} \\
+         \emph{(FR-5, FR-9, NFR-4)} & Data platform \\
 
 \end{longtable}
 
@@ -362,5 +367,5 @@ The eleven gaps identified in Table~\ref{tab:gap-analysis} define the scope of t
 contributions described in Chapters~\ref{chap:architecture} and~\ref{chap:implementation}:
 the \texttt{water-dp} application layer addresses gaps~G-1--G-3 and G-6--G-11,
 the TSM adaptations address gaps~G-4 and~G-5, and the \texttt{hydro-deploy} deployment
-orchestrator addresses gaps~G-7 and~G-8. Each gap is revisited in the requirements evaluation
+layer addresses gaps~G-7 and~G-8. Each gap is revisited in the requirements evaluation
 in Chapter~\ref{chap:testing}.

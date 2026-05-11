@@ -1,44 +1,72 @@
 \chapter{Conclusion}
 \label{chap:conclusion}
 
-This thesis designed and implemented a platform for real-time environmental sensor data
-collection, integration, and visualization, building on the UFZ Time.IO solution as a
-foundation and extending it to meet the operational requirements of Czech University of
-Life Sciences Prague within the context of the European eLTER research infrastructure.
+This thesis addressed the problem of deploying a standards-compliant sensor data
+management platform for Czech University of Life Sciences Prague within the European
+eLTER research infrastructure. The existing UFZ Time.IO solution provided per-Thing
+schema isolation, MQTT-driven worker pipelines, and OGC~STA data access, but lacked a
+usable sensor management interface, project-level access control, and a reproducible
+deployment mechanism suitable for external adopters. This work designed, implemented,
+and validated a three-layer extension that fills these gaps.
 
-\medskip\noindent
-The primary contributions of this work are:
+\section*{Summary of Results}
+\addcontentsline{toc}{section}{Summary of Results}
+
+The implemented system consists of three independently deployable components that together
+form a complete environmental monitoring platform:
 
 \begin{enumerate}
   \item \textbf{TSM Orchestration Adaptation.}
-        A working adaptation of the UFZ \texttt{tsm-orchestration} stack with local STA views
-        implementing the missing FROST compatibility layer, modular Docker~Compose structure
-        enabling overlay-based configuration, and Podman rootless support enabling deployment
-        on security-constrained infrastructure.
+        The upstream \texttt{tsm-orchestration} stack was adapted with local STA views
+        implementing the missing FROST compatibility layer, a modular Docker~Compose
+        structure enabling overlay-based configuration, and Podman rootless support for
+        security-constrained infrastructure. Eighteen marked workarounds bypass the
+        non-functional upstream SMS service.
 
-  \item \textbf{The \texttt{water-dp} Platform.}
-        A new application layer providing project-oriented sensor management, MQTT-driven
-        alert evaluation, geospatial layer integration via GeoServer, and a multilingual web
-        portal in English, Czech, and Slovak.
+  \item \textbf{The Water Data Platform.}
+        A new application layer built with FastAPI (Python) and Next.js~15 (TypeScript)
+        provides project-oriented sensor management, role-based access control with
+        Keycloak integration, MQTT-driven alert evaluation, automated QA/QC via SaQC,
+        geospatial layer integration via GeoServer, and a multilingual web portal in
+        English, Czech, and Slovak.
 
-  \item \textbf{The \texttt{hydro-deploy} Deployment Layer.}
-        A unified deployment orchestrator that merges the two stacks via Docker~Compose
-        multi-file merge, manages secrets, validates cross-stack configuration consistency,
-        and provides a scripted operator interface via a Makefile.
+  \item \textbf{The Unified Deployment Layer.}
+        A deployment orchestrator that merges the two stacks via Docker~Compose
+        multi-file merge, manages secrets, validates cross-stack configuration
+        consistency, and provides a scripted operator interface via a Makefile.
+        A single \texttt{make up} command starts the full 22-container stack.
 \end{enumerate}
 
-The platform resulting from these contributions is live: at the time of writing it is
-deployed at \url{https://hydroportal-dev.dataraptors.eu} and is being actively
-evaluated by CZU researchers, providing real-world operational feedback against the
-target stakeholder environment.
+\noindent
+The platform was validated through three complementary approaches:
+
+\begin{itemize}
+  \item \textbf{Automated testing.} A backend suite of 804~unit and integration tests
+        covers the service layer, API endpoints, middleware, and schema validation
+        (Section~\ref{sec:test-approach-backend}). All 20~functional requirements are
+        fully met (Section~\ref{sec:test-requirements}).
+
+  \item \textbf{Load testing.} Locust-based load tests with 10~and 25~concurrent users
+        confirmed that all API endpoints respond within the 2-second threshold required
+        by NFR-5. Lightweight CRUD operations maintain sub-15\,ms median latency;
+        data-heavy endpoints involving FROST-Server fan-out remain under 310\,ms at the
+        95th~percentile. The system sustains 11.7~requests/second under 25~concurrent
+        users (Section~\ref{sec:test-performance}).
+
+  \item \textbf{Deployment validation.} The full stack was deployed on CZU
+        infrastructure and verified using the automated \texttt{check.sh} script, which
+        confirmed container health, endpoint reachability, and cross-service
+        connectivity for all 22~containers
+        (Section~\ref{sec:test-deployment-czu}).
+\end{itemize}
 
 The design choice that left the deepest mark on the result was keeping
-\texttt{tsm-orchestration} and \texttt{water-dp} as separately deployable stacks instead of
+the ingestion layer and the data platform as separately deployable stacks instead of
 merging them into one monolithic codebase. That separation made it possible to pull in
 upstream TSM updates while letting the application layer evolve on its own. In practice,
 however, the upstream Time.IO project proved unresponsive to external adopters:
 the SMS service stayed broken, the frontends emitted invalid MQTT messages, and integration
-documentation was absent. \texttt{water-dp} exists precisely because of these shortcomings.
+documentation was absent. The data platform exists precisely because of these shortcomings.
 
 \section*{Limitations}
 \addcontentsline{toc}{section}{Limitations}
@@ -85,8 +113,15 @@ The concrete future work items are:
         well-defined: 18~marked locations in one Python module and one SQL directory.
 
   \item \textbf{eLTER metadata integration.} Extend the project and sensor models
-        with eLTER-specific metadata (DEIMS-SDR identifiers, EnvThes vocabulary bindings,
-        habitat classifications) to enable the platform to serve as an eLTER site node.
+        with DEIMS-SDR site identifiers and EnvThes vocabulary bindings so that
+        observations link to the eLTER site registry and use semantically aligned
+        property descriptions. Implement metadata export conforming to the eLTER
+        dataset model so that datasets can be registered in the Digital Asset
+        Register and the STA endpoint listed in the Online Asset Register.
+
+  \item \textbf{eLTER~LogIn federation.} Configure the local Keycloak instance as
+        an identity broker for the eLTER~LogIn service (Perun~AAI), mapping eLTER
+        roles to the platform's role model to enable single-sign-on for eLTER users.
 
   \item \textbf{Cross-site federation.} Implement a federation layer for aggregated
         queries across independently operated platform instances, a prerequisite for

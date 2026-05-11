@@ -1,10 +1,93 @@
 \chapter{Implementation}
 \label{chap:implementation}
 
-All three platform components are described in turn below. Section~\ref{sec:impl-tsm} covers the
-adaptations to \texttt{tsm-orchestration}. The \texttt{water-dp} backend and frontend are treated in
-Sections~\ref{sec:impl-backend} and~\ref{sec:impl-frontend}. Section~\ref{sec:impl-deploy}
-documents the \texttt{hydro-deploy} unified deployment layer.
+This chapter first justifies the major technology choices
+(Section~\ref{sec:impl-technology}), then describes the adaptations to
+\texttt{tsm-orchestration} (Section~\ref{sec:impl-tsm}), the data platform
+backend and frontend (Sections~\ref{sec:impl-backend} and~\ref{sec:impl-frontend}),
+and the unified deployment layer (Section~\ref{sec:impl-deploy}).
+
+%% ----------------------------------------------------------------
+\section{Technology Selection}
+\label{sec:impl-technology}
+%% ----------------------------------------------------------------
+
+The technology choices were driven by the requirements from Chapter~\ref{chap:requirements}
+and by maintainability concerns given the expected platform lifetime. Each major choice
+is justified below.
+
+\subsection{Backend: FastAPI}
+\label{sec:impl-tech-fastapi}
+
+FastAPI~\cite{fastapi-ref} was chosen for the data platform backend over Flask and Django. Its
+native \texttt{async}/\texttt{await} support is needed for non-blocking database
+queries (via SQLAlchemy~2.0 async sessions) and concurrent HTTP calls to FROST-Server and
+GeoServer. Pydantic request and response schemas generate OpenAPI documentation automatically,
+so a separate API specification does not need to be maintained. Flask lacks built-in
+async support and would need additional libraries for request validation. Django was
+considered too heavy for a service that acts primarily as an API layer and does not rely on Django's
+ORM, template engine, or admin interface.
+
+\subsection{Frontend: Next.js~15}
+\label{sec:impl-tech-nextjs}
+
+Next.js~15~\cite{nextjs-ref} with the App Router was chosen for the frontend portal. React Server
+Components and server-side rendering let authentication-protected routes be rendered on
+the server, so unauthenticated users never receive page content. File-based
+routing cuts boilerplate, and built-in internationalization support simplifies
+the multilingual requirement (FR-25). A plain React single-page application would need a
+separate server for SSR and manual route configuration. Vue.js was considered, but at the time
+of selection its ecosystem for complex applications combining SSR, authentication middleware,
+and internationalization was less mature.
+
+\subsection{Time-Series Storage: TimescaleDB}
+\label{sec:impl-tech-timescaledb}
+
+TimescaleDB~\cite{timescaledb-ref} was preferred over InfluxDB for time-series storage. As a PostgreSQL
+extension, it runs on the same database server that already hosts the TSM configuration
+database and the \texttt{water\_dp} application schema; no separate database system
+to deploy and maintain. It brings
+automatic time-based chunking of hypertables, native compression for older chunks, and full
+SQL compatibility, so observations can be joined with configuration
+tables without a gateway or translation layer. InfluxDB would have meant a separate
+deployment, a different query language (InfluxQL or Flux), and a synchronization mechanism
+between the two databases.
+
+\subsection{Geospatial Layer: GeoServer}
+\label{sec:impl-tech-geoserver}
+
+GeoServer~\cite{geoserver-ref} handles geospatial layer management. It exposes standards-compliant
+OGC Web Map Service (WMS) and Web Feature Service (WFS) interfaces over PostGIS data, fitting
+the platform's broader reliance on OGC standards for interoperability.
+GeoServer is widely deployed in research institutions and supports workspaces, datastores, and
+layer publishing through a REST~API, which the data platform backend calls for programmatic
+layer management. Geospatial features reside in PostGIS geometry columns (SRID
+4326) and are published through GeoServer to the frontend, which renders them with
+MapLibre~GL.
+
+\subsection{Authentication: Keycloak}
+\label{sec:impl-tech-keycloak}
+
+Keycloak~\cite{keycloak-ref} was carried over from the upstream TSM stack. It offers a battle-tested OIDC
+implementation with realm and client management, group-based access control, and integration
+with external identity providers. A two-tier RBAC model splits responsibilities:
+Keycloak realm roles define platform-wide privileges (e.g.\ administrator), while the
+\texttt{project\_members} table in the \texttt{water\_dp} schema stores per-project roles.
+Keycloak groups link to projects through the \texttt{authorization\_provider\_group\_id}
+column, letting group membership govern project access without duplicating user management.
+JWT tokens are verified by fetching the JSON Web Key Set (JWKS) from the Keycloak endpoint
+and checking RS256 signatures.
+
+\subsection{Object Storage: MinIO}
+\label{sec:impl-tech-minio}
+
+MinIO~\cite{minio-ref} was also kept from the upstream TSM stack. Its S3-compatible object storage
+runs without cloud service dependencies, which is important for on-premise deployments at research
+institutions. Each Thing gets its own MinIO bucket for raw data files. When a file lands
+in a bucket, MinIO fires an S3~event notification to MQTT, which triggers the file-ingest
+worker automatically. MinIO also stores user-uploaded parser scripts and
+external API syncer scripts used by the dynamic parser loading mechanism described in
+Section~\ref{sec:bg-timeio-parsers}.
 
 %% ----------------------------------------------------------------
 \section{TSM Orchestration Adaptation}
@@ -53,7 +136,7 @@ view set accordingly during schema provisioning.
 \subsection{Compose Modularization}
 \label{sec:impl-tsm-compose}
 
-To deploy \texttt{water-dp} alongside TSM without touching the upstream Compose file, a
+To deploy the data platform alongside TSM without touching the upstream Compose file, a
 dedicated overlay was added:
 \texttt{docker-compose-water-dp.yml}. This file defines a single service, \texttt{water-dp-api},
 that connects to the TSM database, MQTT broker, FROST-Server, and Keycloak instance. The
@@ -62,7 +145,7 @@ tables and the TSM configuration tables. The overlay also starts a Redis contain
 task queue.
 
 Because the overlay leaves the upstream \texttt{docker-compose.yml} untouched, it
-can be updated independently. The full Compose file chain used by \texttt{hydro-deploy} is
+can be updated independently. The full Compose file chain used by the deployment layer is
 described in Section~\ref{sec:impl-deploy-compose}.
 
 \subsection{Worker Architecture}
@@ -197,9 +280,9 @@ long-term approach.
 %   (d) GeoServer integration via REST API
 %   (f) Keycloak OIDC: token validation middleware, per-project role enforcement
 
-Built on FastAPI, the \texttt{water-dp} API acts as the application-logic layer on top of
+Built on FastAPI, the data platform API acts as the application-logic layer on top of
 \texttt{tsm-orchestration}. It is structured as a layered Python package in \texttt{api/app/}
-with four tiers: endpoint routers, Pydantic schemas, service classes, and SQLAlchemy models.
+with four tiers: endpoint routers, Pydantic\footnote{Pydantic data validation library: \url{https://docs.pydantic.dev/}} schemas, service classes, and SQLAlchemy\footnote{SQLAlchemy ORM: \url{https://www.sqlalchemy.org/}} models.
 
 \subsection{Project Structure}
 \label{sec:impl-backend-structure}
@@ -231,11 +314,11 @@ Inside \texttt{api/app/}, the code follows a conventional layered layout:
 In \texttt{main.py}, the application is created with a middleware stack applied in order:
 \texttt{LoggingMiddleware} (UUID-tagged request logging), \texttt{SecurityHeadersMiddleware}
 (security response headers), \texttt{ErrorHandlingMiddleware} (structured JSON error
-responses), Starlette \texttt{CORSMiddleware}, \texttt{TrustedHostMiddleware}, and
+responses), Starlette\footnote{Starlette ASGI framework: \url{https://www.starlette.io/}} \texttt{CORSMiddleware}, \texttt{TrustedHostMiddleware}, and
 \texttt{SlowAPIMiddleware} (rate limiting). OpenAPI documentation is exposed only when the
 application runs in debug mode.
 
-Four Alembic migration files manage the \texttt{water\_dp} schema evolution: the initial
+Four Alembic\footnote{Alembic database migration tool: \url{https://alembic.sqlalchemy.org/}} migration files manage the \texttt{water\_dp} schema evolution: the initial
 schema creates tables for projects, dashboards, geospatial layers, alert definitions, alerts,
 and jobs; subsequent migrations add the \texttt{sensor\_activity\_configs}
 table, the \texttt{project\_members} table for RBAC, and the \texttt{sensor\_id}/\texttt{datastream\_id}
@@ -333,7 +416,7 @@ specified spatial reference system (SRS), default style, and visibility. The
 GeoServer's \texttt{JDBC\_VIRTUAL\_TABLE} metadata, which enables dynamic per-project
 sensor views without pre-creating database views.
 
-Geospatial features are stored in the \texttt{water\_dp} schema using GeoAlchemy2
+Geospatial features are stored in the \texttt{water\_dp} schema using GeoAlchemy2\footnote{GeoAlchemy2 spatial extension for SQLAlchemy: \url{https://geoalchemy-2.readthedocs.io/}}
 \texttt{Geometry} columns (SRID~4326). The \texttt{GeoLayer} and \texttt{GeoFeature} models
 represent uploaded layers and their individual features. Layer-to-project associations
 are managed through the \texttt{LayerProjectAssignment} model.
@@ -353,7 +436,7 @@ Three levels of access control are provided by the dependency chain in \texttt{a
 \texttt{get\_current\_active\_superuser()} verifies administrator privileges.
 
 Per-project authorization uses the two-tier RBAC model described in
-Section~\ref{sec:arch-tech-keycloak}. The \texttt{RBACService} in
+Section~\ref{sec:impl-tech-keycloak}. The \texttt{RBACService} in
 \texttt{services/rbac\_service.py} resolves the effective role by evaluating six rules in
 priority order:
 \begin{enumerate}
@@ -376,7 +459,7 @@ the capability set: \texttt{can\_view}, \texttt{can\_edit\_settings},
 \label{sec:impl-frontend}
 %% ----------------------------------------------------------------
 
-Built on Next.js~15 with React~19, the frontend portal uses the App~Router architecture. The
+Built on Next.js~15 with React\footnote{React UI library: \url{https://react.dev/}}~19, the frontend portal uses the App~Router architecture. The
 application is deployed under the \texttt{/portal} base path and built in \texttt{standalone}
 output mode for containerized deployment.
 
@@ -404,14 +487,28 @@ All authenticated routes use a protected layout pattern. Each layout calls the s
 \texttt{auth()} function from NextAuth and redirects unauthenticated users to the sign-in
 page. The SMS and Layers layouts additionally check the JWT group role to enforce the minimum
 \texttt{editor} privilege. At the top level, the root layout wraps the entire application in a \texttt{Providers}
-component that supplies the React~Query \texttt{QueryClientProvider}, the NextAuth
+component that supplies the React~Query\footnote{TanStack Query (React Query): \url{https://tanstack.com/query}} \texttt{QueryClientProvider}, the NextAuth\footnote{NextAuth.js authentication library: \url{https://next-auth.js.org/}}
 \texttt{SessionProvider}, a theme context, and an idle-timeout monitor.
+
+Figure~\ref{fig:screenshot-project-list} shows the project list, which serves as
+the main landing page after login. Projects are displayed as cards with their
+description and linked sensor count; a group filter allows narrowing the view
+by Keycloak group membership.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/screenshot-dashboard.png}
+  \caption{Project list page. Each card shows the project name, description,
+           number of linked sensors, and the user's role. The group filter
+           at the top restricts the view to a single Keycloak group.}
+  \label{fig:screenshot-project-list}
+\end{figure}
 
 \subsection{Time-Series Visualization}
 \label{sec:impl-frontend-charts}
 
 Multi-series time-series data is rendered by the \texttt{TimeSeriesChart} component using the
-Recharts library. Interactive zoom is supported via two mechanisms: a
+Recharts\footnote{Recharts charting library: \url{https://recharts.org/}} library. Interactive zoom is supported via two mechanisms: a
 \texttt{ReferenceArea} drawn by click-and-drag to select a time range, and a
 \texttt{Brush} component for scrolling through the full dataset. Multiple series
 (each with its own color, label, and unit) are merged into a unified time axis by indexing
@@ -423,14 +520,31 @@ cover the major resource types: projects, sensors, dashboards, alerts, QA/QC,
 SMS, layers, simulator, and permissions. Query keys are centralized in
 \texttt{hooks/queries/keys.ts} to ensure cache consistency across components.
 
-An Axios instance in \texttt{lib/api.ts} serves as the API client, with a request interceptor that
+An Axios\footnote{Axios HTTP client: \url{https://axios-http.com/}} instance in \texttt{lib/api.ts} serves as the API client, with a request interceptor that
 attaches the NextAuth access token as a \texttt{Bearer} header. An in-memory token cache
 with a 60-second expiry buffer avoids redundant \texttt{getSession()} calls.
+
+Figure~\ref{fig:screenshot-sensor-detail} shows the per-project sensor detail
+view for the Orl\'{\i}k Dam monitoring station. The left panel displays metadata
+(status, device type, description, coordinates) and a location mini-map; the
+right panel renders a time-series chart of recent observations with a datastream
+selector.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/screenshot-timeseries.png}
+  \caption{Sensor detail view within a project. The metadata panel on the left
+           shows the sensor status, device type, coordinates, and a location
+           mini-map. The chart on the right plots recent observations for the
+           selected datastream (\texttt{water\_level}); a dropdown allows
+           switching between available datastreams.}
+  \label{fig:screenshot-sensor-detail}
+\end{figure}
 
 \subsection{Geospatial Layer Viewer}
 \label{sec:impl-frontend-geo}
 
-Geospatial rendering uses MapLibre~GL~JS in three components. Sensor locations appear as clustered GeoJSON markers on a CARTO basemap
+Geospatial rendering uses MapLibre~GL~JS\footnote{MapLibre GL JS mapping library: \url{https://maplibre.org/}} in three components. Sensor locations appear as clustered GeoJSON markers on a CARTO basemap
 in the \texttt{ProjectMap} component
 (dark-matter or positron, selected by the theme context). Marker popups show the latest
 datastream values, refreshed every 30~seconds. GeoServer WMS layers assigned to the
@@ -439,6 +553,21 @@ toggle their visibility.
 
 An interactive click-or-drag marker in the \texttt{LocationPickerMap} component enables
 setting sensor coordinates during Thing creation. A read-only map in \texttt{SensorMiniMap} shows the sensor's location.
+
+Figure~\ref{fig:screenshot-map} illustrates the map view with a GeoServer WMS
+layer overlay (Czech Republic boundaries) and sensor markers distributed across
+the monitored region.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/screenshot-map.png}
+  \caption{Sensor map on a CARTO positron basemap with a GeoServer WMS layer
+           overlay. The popup for the Rozko\v{s} Dam sensor shows the latest
+           \texttt{water\_level} (90.33\,m) and \texttt{temperature}
+           (19.69\,\textdegree{}C) readings. A layer selector in the top-left
+           corner toggles WMS overlays.}
+  \label{fig:screenshot-map}
+\end{figure}
 
 \subsection{Data Quality Interface}
 \label{sec:impl-frontend-quality}
@@ -463,7 +592,7 @@ for individual file uploads.
 \subsection{Multilingual Support}
 \label{sec:impl-frontend-i18n}
 
-Three languages are supported by the portal: English, Czech, and Slovak. A custom solution based on a Zustand store (\texttt{useLanguageStore}) with
+Three languages are supported by the portal: English, Czech, and Slovak. A custom solution based on a Zustand\footnote{Zustand state management library: \url{https://github.com/pmndrs/zustand}} store (\texttt{useLanguageStore}) with
 \texttt{persist} middleware, which saves the selected language to \texttt{localStorage}
 under the key \texttt{language-storage}. Locale files in \texttt{locales/} export typed
 \texttt{Dictionary} objects (\texttt{en.ts}, \texttt{cs.ts}, \texttt{sk.ts}) that share
@@ -478,8 +607,26 @@ URL-based language routing. This design was chosen to simplify the deployment an
 additional Next.js middleware complexity, at the cost of the initial page flash before
 the persisted language is loaded from storage.
 
+Figure~\ref{fig:screenshot-sms} shows the Sensor Management System interface, which
+is accessible only to users with the \texttt{editor} role or higher.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/screenshot-sms.png}
+  \caption{Global Sensor Management page in the SMS section. Each row shows
+           the sensor name, owning project, ingestion type (MQTT, External~API,
+           or External~SFTP), assigned data parser, and the MQTT topic. The
+           sidebar provides navigation to parsers, device types, API types,
+           and QA/QC configuration.}
+  \label{fig:screenshot-sms}
+\end{figure}
+
+Additional portal screenshots, including SMS-level sensor detail, QA/QC
+configuration, bulk sensor import, layer management, and the language switcher,
+are collected in Appendix~\ref{app:screenshots}.
+
 %% ----------------------------------------------------------------
-\section{Hydro Deploy --- Unified Deployment Layer}
+\section{Unified Deployment Layer}
 \label{sec:impl-deploy}
 %% ----------------------------------------------------------------
 

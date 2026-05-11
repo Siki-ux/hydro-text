@@ -1,11 +1,16 @@
 # Count standard pages (1 page = 1,800 characters) with LaTeX commands stripped.
+# Own figures count as 0.5 page each. Appendix (08-*) is excluded from the total.
 param([string]$Dir = "dp-text/chapters")
 
 $total = 0
+$mainTotal = 0
+$figCount = 0
 foreach ($f in Get-ChildItem "$Dir/*.tex" | Sort-Object Name) {
-    $c = Get-Content $f.FullName -Raw
+    $raw = Get-Content $f.FullName -Raw
+    # Count figures (own pictures) in this file
+    $figs = ([regex]::Matches($raw, '\\begin\{figure\}')).Count
     # Strip comments, LaTeX commands, braces, tildes, collapse whitespace
-    $c = $c -replace '(?m)%.*$', ''
+    $c = $raw -replace '(?m)%.*$', ''
     $c = $c -replace '\\begin\{[^}]*\}', ''
     $c = $c -replace '\\end\{[^}]*\}', ''
     $c = $c -replace '\\[a-zA-Z]+\*?\{', ''
@@ -16,11 +21,21 @@ foreach ($f in Get-ChildItem "$Dir/*.tex" | Sort-Object Name) {
     $n = $c.Length
     $p = [math]::Round($n / 1800, 1)
     $total += $n
-    Write-Host ("  {0,-25} {1,6} chars = {2,5} pages" -f $f.Name, $n, $p)
+    $isAppendix = $f.Name -match '^08-'
+    if (-not $isAppendix) {
+        $mainTotal += $n
+        $figCount += $figs
+    }
+    $suffix = if ($isAppendix) { " (appendix, excluded)" } elseif ($figs -gt 0) { " + $figs fig(s)" } else { "" }
+    Write-Host ("  {0,-25} {1,6} chars = {2,5} pages{3}" -f $f.Name, $n, $p, $suffix)
 }
-$tp = [math]::Round($total / 1800, 1)
+$textPages = [math]::Round($mainTotal / 1800, 1)
+$figPages = $figCount * 0.5
+$totalPages = [math]::Round($textPages + $figPages, 1)
 Write-Host ""
-Write-Host ("  TOTAL: {0} chars = {1} standard pages (target: 50-70)" -f $total, $tp)
+Write-Host ("  Text pages (ch01-07):  {0}" -f $textPages)
+Write-Host ("  Figure pages ({0} figs x 0.5): {1}" -f $figCount, $figPages)
+Write-Host ("  TOTAL standard pages: {0} (target: 50-70)" -f $totalPages)
 
 # Background share check
 $bg = 0
@@ -31,5 +46,5 @@ foreach ($f in Get-ChildItem "$Dir/02-background.tex", "$Dir/03-requirements.tex
     $c = $c -replace '[{}\\~]', '' -replace '\s+', ' '
     $bg += $c.Trim().Length
 }
-$bgPct = [math]::Round($bg / $total * 100, 1)
+$bgPct = [math]::Round($bg / $mainTotal * 100, 1)
 Write-Host ("  Background share (Ch2+Ch3): {0}% (max 30%)" -f $bgPct)
