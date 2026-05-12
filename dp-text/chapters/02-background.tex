@@ -18,20 +18,19 @@ Environmental monitoring deployments typically connect sensors to data loggers o
 that forward observations to a central infrastructure. A representative architecture has four layers:
 edge devices sampling physical quantities, an ingestion layer receiving data over one or more
 protocols, a storage layer optimized for time-series workloads, and an access layer exposing the
-data through standardized interfaces \cite{hart2006environmental}.
+data through standardized interfaces~\cite{hart2006environmental}.
 
 Heterogeneity across these systems poses a significant engineering challenge. A single monitoring network
 may combine sensors from different manufacturers, each using a proprietary payload format, delivered
 over MQTT, HTTP~POST, SFTP file upload, or manual CSV import. Temporal resolutions range from
 sub-second sampling on vibrating-wire piezometers to daily aggregates from weather stations.
 Reconciling these differences into a unified data model is a prerequisite for any cross-site analysis
-\cite{horsburgh2008observations}.
+~\cite{horsburgh2008observations}.
 
-Several platforms address parts of this problem space. The Observations Data Model~2 (ODM2)
-\cite{horsburgh2016odm2} provides a relational schema for managing diverse observational data with
-rich provenance metadata. ERDDAP \cite{simons2023erddap} focuses on data distribution, enabling
+Several platforms address parts of this problem space. The Observations Data Model~2 (ODM2)~\cite{horsburgh2016odm2} provides a relational schema for managing diverse observational data with
+rich provenance metadata. ERDDAP~\cite{simons2023erddap} focuses on data distribution, enabling
 scientists to access gridded and tabular datasets through uniform query interfaces. The OGC Sensor
-Observation Service (SOS) \cite{ogcsos} defines a standard web-service interface for querying sensor
+Observation Service (SOS)~\cite{ogcsos} defines a standard web-service interface for querying sensor
 data, but its XML-based protocol has been largely superseded by the RESTful SensorThings~API discussed
 in Section~\ref{sec:bg-sta}.
 
@@ -44,7 +43,7 @@ interoperability-first approach.
 \label{sec:bg-sta}
 %% ================================================================
 
-The OGC SensorThings API (STA) \cite{ogc-sta} is a RESTful, JSON-based standard for IoT
+The OGC SensorThings API (STA)~\cite{ogc-sta} is a RESTful, JSON-based standard for IoT
 sensor data, ratified by the Open Geospatial Consortium in 2016 as a lightweight successor
 to the XML-based Sensor Observation Service.
 
@@ -78,7 +77,7 @@ extension for real-time subscription to entity changes.
 \label{sec:bg-frost}
 
 Several STA server implementations exist (GOST, 52°North SensorThingsServer), but
-FROST-Server \cite{frost-server} by the Fraunhofer IOSB is the most widely adopted and
+FROST-Server~\cite{frost-server} by the Fraunhofer IOSB is the most widely adopted and
 serves as the OGC reference implementation. It was selected for this platform because
 the upstream Time.IO system already integrates it (Section~\ref{sec:bg-timeio}), it
 provides full STA Part~1 compliance including all OData query options, and --- critically
@@ -95,7 +94,7 @@ FROST-Server is deployed as a Java web application on Apache Tomcat\footnote{Apa
 
 Time.IO (internally referred to as \emph{tsm-orchestration} or TSM) is an open-source environmental
 sensor data management platform developed at the Helmholtz Centre for Environmental Research (UFZ)
-in Leipzig \cite{bumberger2025timeio,timeio-ref}. It provides an end-to-end pipeline for ingesting, storing,
+in Leipzig~\cite{bumberger2025timeio,timeio-ref}. It provides an end-to-end pipeline for ingesting, storing,
 quality-controlling, and serving environmental time-series data. The platform served as the starting
 point for the work described in this thesis.
 
@@ -279,7 +278,7 @@ the limitations documented in Section~\ref{sec:bg-timeio-limitations}.
 %% ================================================================
 
 The European Long-Term Ecosystem, Critical Zone and Socio-Ecological Research Infrastructure
-(eLTER~RI) \cite{elter-ref} coordinates environmental monitoring across more than 400~sites
+(eLTER~RI)~\cite{elter-ref} coordinates environmental monitoring across more than 400~sites
 in over 25~European countries. Sites range from alpine observatories and forest flux towers
 to freshwater catchments and urban gradient transects. The network distinguishes two
 categories: \emph{eLTER Sites}, which carry out long-term observations at the ecosystem
