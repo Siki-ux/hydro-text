@@ -38,6 +38,16 @@ The CZU deployment addressed in this thesis must unify sensors from multiple man
 under a single platform accessible to several research groups, requiring a similar
 interoperability-first approach.
 
+Among the standards listed above, the OGC SensorThings~API is adopted as the primary data
+interface for this platform. It provides a standardized data model that captures the full
+context of an observation, including the measuring device, the observed property, and the
+spatial feature, while exposing it through a RESTful, JSON-based protocol well suited for
+modern web front-ends. Its built-in OData query options support temporal and spatial
+filtering without custom API design, and its MQTT extension enables real-time data
+subscription. Furthermore, STA is already integrated in the upstream Time.IO system
+(Section~\ref{sec:bg-timeio}) on which the platform builds, making it a natural
+architectural choice.
+
 %% ================================================================
 \section{OGC SensorThings API}
 \label{sec:bg-sta}
