@@ -20,7 +20,7 @@ deployment.
 \subsection{Backend Test Suite}
 \label{sec:test-approach-backend}
 
-A pytest-based test suite covering 797~test
+A pytest-based test suite covering 804~test
 functions across 43~test files is included with the data platform backend, organized into five directories:
 \texttt{test\_api/} (endpoint-level tests), \texttt{test\_services/} (business-logic tests),
 \texttt{test\_core/} (middleware, security, and exception handling), \texttt{test\_schemas/}
@@ -265,7 +265,7 @@ Table~\ref{tab:req-evaluation-nfr} summarizes the evaluation of non-functional r
 Table~\ref{tab:gap-closure} maps the eleven gaps identified in
 Section~\ref{sec:req-gap} to their resolution status.
 
-\begin{longtable}{l l p{0.55\textwidth}}
+\begin{longtable}{l l p{0.70\textwidth}}
   \caption{Gap analysis closure.}
   \label{tab:gap-closure} \\
   \textbf{Gap} & \textbf{Status} & \textbf{Resolution} \\
@@ -308,14 +308,14 @@ absence of eLTER-specific metadata schemas, which are planned as future work.
 \label{sec:test-performance}
 %% ----------------------------------------------------------------
 
-To validate that the platform meets NFR-5 (response time under 2\,seconds) and NFR-7
-(support for concurrent users), load tests were executed using Locust~2.43 against a
+To validate that the platform meets its response-time target (under 2\,seconds) and
+scales under concurrent load, load tests were executed using Locust~2.43 against a
 local deployment of the full 22-container stack on a development machine (AMD Ryzen~7,
 32\,GB RAM, NVMe SSD, Docker Desktop). Ten simulated users performed weighted API
 operations (project listing, sensor queries, geospatial layer retrieval) with randomized
 wait times of 1--3\,seconds between requests.
 
-All endpoints satisfy the 2-second response time requirement (NFR-5) even at the
+All endpoints satisfy the 2-second response time target even at the
 95th~percentile (Table~\ref{tab:load-test-10u}). Lightweight CRUD operations (project
 listing, project detail) maintain sub-15\,ms median latency. Endpoints that perform
 HTTP fan-out to FROST-Server (\texttt{/projects/\{id\}/sensors},
@@ -456,7 +456,7 @@ long-term sustainability of the TSM-TEMP workarounds.
 
 The deployment workflow described in Sections~\ref{sec:arch-deployment}
 and~\ref{sec:impl-deploy} was validated on CZU infrastructure. The full stack of
-16~containers was started using \texttt{make up}, with the post-deployment
+22~containers was started using \texttt{make up}, with the post-deployment
 \texttt{check.sh} script confirming container health, endpoint reachability across
 all eight HTTP services, and credential consistency across the synchronised
 \texttt{.env} variable pairs.
@@ -491,46 +491,32 @@ between the current platform and a production-ready eLTER site-level deployment
 (see Section~\ref{sec:bg-elter-ci} for the CI components referenced below):
 
 \begin{itemize}
-  \item \textbf{DEIMS-SDR site linkage.} eLTER identifies every monitoring site through
-    a DEIMS-SDR record that carries geographic boundaries, instrumentation descriptions,
-    and responsible organizations. The current data model has no field for a DEIMS-SDR
-    identifier, so observations cannot be linked back to the eLTER site registry.
-  \item \textbf{Vocabulary alignment.} eLTER uses controlled vocabularies (EnvThes,
-    eLTER Standard Observations) for observed properties and ecosystem parameters.
-    The current platform stores observed-property metadata as free-text fields inherited
-    from FROST, with no vocabulary binding or validation against the eLTER terminology
-    services.
-  \item \textbf{DAR and OAR registration.} For datasets to appear in the eLTER Digital
-    Asset Register, the platform must be able to export dataset metadata conforming to
-    the eLTER metadata model. The STA endpoint must also be registrable in the Online
-    Asset Register so that the eLTER~CI can link dataset records to live data access.
-    Neither capability exists.
-  \item \textbf{eLTER~LogIn federation.} Authentication uses a local Keycloak instance.
-    Integrating with the eLTER~LogIn service (Perun~AAI) would require configuring
-    Keycloak as a broker for the eLTER identity provider and mapping eLTER roles
-    to the platform's role model.
+  \item \textbf{DEIMS-SDR site linkage.} The data model has no field for a DEIMS-SDR
+    identifier, so observations cannot be linked to the eLTER site registry.
+  \item \textbf{Vocabulary alignment.} Observed-property metadata is stored as
+    free-text fields with no binding to EnvThes or eLTER Standard Observations.
+  \item \textbf{DAR and OAR registration.} The platform cannot export metadata
+    conforming to the eLTER dataset model, nor register the STA endpoint in the
+    Online Asset Register.
+  \item \textbf{eLTER~LogIn federation.} Keycloak would need to be configured as
+    an identity broker for the eLTER~LogIn service (Perun~AAI).
   \item \textbf{Cross-site federation.} The platform operates as a single-site
-    deployment. eLTER's distributed nature, spanning over 400~sites across more than
-    25~countries, requires federation mechanisms: cross-site discovery, aggregated
-    queries, and data harmonization across independently operated instances.
-  \item \textbf{FAIR compliance.} eLTER mandates FAIR data principles. The platform
-    provides accessibility and interoperability through OGC~STA, but lacks persistent
-    identifiers (DOIs), structured provenance records, and machine-readable licensing
-    metadata required for registration in the DAR.
+    deployment; eLTER requires cross-site discovery and aggregated queries.
+  \item \textbf{FAIR compliance.} Persistent identifiers (DOIs), provenance records,
+    and machine-readable licensing metadata are absent.
 \end{itemize}
 
-These gaps are architectural in nature and cannot be addressed by configuration changes
-alone. They represent a substantial development effort that is beyond the scope of
-this thesis but constitutes a realistic path for future work, given that the
-foundational components (STA data access, OIDC authentication, containerised
-deployment) are already in place.
+These gaps are architectural and cannot be addressed by configuration changes
+alone, but the foundational components (STA data access, OIDC authentication,
+containerised deployment) are already in place for future work.
 
 \subsection{Sustainability of the TSM-TEMP Workarounds}
 \label{sec:test-deployment-tsmtemp}
 
 The 18~\texttt{TSM-TEMP} marked locations in the codebase, concentrated in
 \texttt{setup\_user\_database.py} and \texttt{sta\_views\_local/}, have shown no
-operational disadvantages throughout the deployment period. The upstream SMS service
-has remained non-functional throughout the duration of this thesis, and no public
-roadmap for its restoration has been communicated. The assessment and recommended
-migration path are discussed in Section~\ref{sec:impl-tsm-assessment}.
+operational disadvantages throughout the deployment period. The upstream SMS
+service has remained non-functional throughout the duration of this thesis, and
+no public roadmap for its restoration has been communicated. The assessment and
+recommended migration path are discussed in
+Section~\ref{sec:impl-tsm-assessment}.

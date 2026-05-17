@@ -82,10 +82,10 @@ which was non-functional (Section~\ref{sec:bg-timeio-limitations}). The replacem
 \texttt{src/sql/sta\_views\_local/} and query the local \texttt{thing}, \texttt{datastream}, and
 \texttt{observation} tables directly.
 
-Seven view files replace the original set, mapping the local \texttt{thing},
+Nine view files replace the original set, mapping the local \texttt{thing},
 \texttt{datastream}, and \texttt{observation} tables to the column layout FROST-Server
 expects. Key adaptations include constructing the \texttt{UNIT\_OF\_MEASUREMENT} JSON from
-JSONB properties, adding a \texttt{dataSource: local} marker to observations, and deriving
+JSONB properties, adding a \texttt{dataSource: local} marker to the observation view output, and deriving
 PostGIS geometries from GeoJSON coordinates in Thing properties. Views for
 \texttt{SENSORS}, \texttt{FEATURES\_OF\_INTEREST}, and \texttt{OBSERVED\_PROPERTIES}
 return empty result sets (\texttt{WHERE false}) so FROST-Server starts without errors.

@@ -34,19 +34,36 @@ Observation Service (SOS)~\cite{ogcsos} defines a standard web-service interface
 data, but its XML-based protocol has been largely superseded by the RESTful SensorThings~API discussed
 in Section~\ref{sec:bg-sta}.
 
+More complete end-to-end platforms also exist. HydroServer~\cite{horsburgh2025hydroserver}
+is an open-source hydrological monitoring stack built at Utah State University
+that recently adopted the SensorThings data model; it focuses on site-level
+data management and sharing but does not include a pluggable ingestion pipeline
+for heterogeneous sensor protocols. istSOS~\cite{cannata2018istsos} is an
+OGC-compliant sensor observation service developed at SUPSI; its latest version
+(istSOS~4) implements STA, yet it primarily acts as a data-serving layer
+without built-in MQTT ingestion or multi-tenant project management.
+ThingsBoard~\cite{thingsboard} is a general-purpose IoT platform offering
+device management, rule-based processing, and dashboards; however, it uses a
+proprietary data model rather than OGC standards and is designed for industrial
+IoT rather than environmental research workflows.
+
 The CZU deployment addressed in this thesis must unify sensors from multiple manufacturers
 under a single platform accessible to several research groups, requiring a similar
-interoperability-first approach.
+interoperability-first approach. Among the platforms surveyed, the UFZ Time.IO system
+(Section~\ref{sec:bg-timeio}) was selected as the foundation because it already
+provides STA-compliant data access through FROST-Server, a message-driven
+ingestion pipeline with pluggable parsers, per-thing schema isolation in
+PostgreSQL, and containerised deployment via Docker Compose. These properties
+match the requirements of the CZU deployment more closely than the alternatives
+listed above.
 
-Among the standards listed above, the OGC SensorThings~API is adopted as the primary data
-interface for this platform. It provides a standardized data model that captures the full
-context of an observation, including the measuring device, the observed property, and the
-spatial feature, while exposing it through a RESTful, JSON-based protocol well suited for
-modern web front-ends. Its built-in OData query options support temporal and spatial
-filtering without custom API design, and its MQTT extension enables real-time data
-subscription. Furthermore, STA is already integrated in the upstream Time.IO system
-(Section~\ref{sec:bg-timeio}) on which the platform builds, making it a natural
-architectural choice.
+Among the standards discussed in this section, the OGC SensorThings~API is adopted as the
+primary data interface for this platform. It provides a standardized data model that
+captures the full context of an observation, including the measuring device, the observed
+property, and the spatial feature, while exposing it through a RESTful, JSON-based protocol
+well suited for modern web front-ends. Its built-in OData query options support temporal
+and spatial filtering without custom API design, and its MQTT extension enables real-time
+data subscription.
 
 %% ================================================================
 \section{OGC SensorThings API}
@@ -146,7 +163,7 @@ layer comprises the following core services:
   \item \textbf{Mosquitto\footnote{Eclipse Mosquitto MQTT broker: \url{https://mosquitto.org/}} MQTT broker} --- the event backbone connecting all workers and external
         sensor data sources. Supports both plain (port~1883) and TLS-encrypted (port~8883)
         connections.
-  \item \textbf{MinIO object storage} --- an S3-compatible store used for file-based data ingestion.
+  \item \textbf{MinIO object storage} --- an S3-compatible\footnote{S3-compatible means MinIO implements the same REST API as Amazon~S3; any client, SDK, or tool that works with AWS~S3 can be pointed at a MinIO instance by changing only the endpoint URL. See \url{https://min.io/}.} store used for file-based data ingestion.
         Each Thing receives its own bucket for raw data files.
   \item \textbf{FROST-Server} --- an OGC SensorThings API endpoint deployed on Apache Tomcat,
         providing standardized read access to observation data through SQL views over per-thing
@@ -234,8 +251,8 @@ service that was meant to feed Thing metadata to FROST-Server via dedicated SQL 
 (\texttt{sql/sta\_views/}). The SMS was never operational: the synchronization worker existed in the
 codebase, but the upstream backend it depended on was unavailable. Without populated SMS tables,
 the STA views returned empty results, rendering FROST-Server non-functional for standards-compliant
-data access. The combined \texttt{timeio-and-sms} deployment repository proved impossible to bring
-up due to outdated dependencies and breaking bugs.
+data access. The combined \texttt{timeio-and-sms} deployment repository proved impossible to deploy
+due to outdated dependencies and breaking bugs.
 
 \paragraph{Upstream frontends.}
 The original \texttt{tsm-frontend} (Django) and its newer replacement \texttt{thing-management}
@@ -293,44 +310,95 @@ in over 25~European countries. Sites range from alpine observatories and forest 
 to freshwater catchments and urban gradient transects. The network distinguishes two
 categories: \emph{eLTER Sites}, which carry out long-term observations at the ecosystem
 level, and \emph{eLTER Platforms}, which host intensive, high-resolution measurement campaigns
-on shorter time scales. eLTER is currently transitioning from project-funded development
-under eLTER~PLUS toward sustained operation as a European Research Infrastructure
-Consortium (ERIC).
+on shorter time scales.
+
+The research objectives of eLTER span the investigation of abiotic--biotic ecosystem
+interactions (including human--environment feedbacks), ecosystem process analysis,
+socio-ecological research, and the operation of a continental-scale network for consistent,
+long-term data collection~\cite{elter-plus-d11.3}. eLTER maintains close ties with
+related European environmental research infrastructures grouped under the ENVRI cluster,
+including ICOS, AnaEE, LifeWatch, and ACTRIS.
+
+eLTER was funded through three successive EU projects: eLTER~PPP and eLTER~PLUS (both
+Horizon~2020, 2020--2026) and eLTER~EnRich (Horizon Europe). In early~2023 the
+consortium lost its original ICT partner responsible for building the CyberInfrastructure
+(UK~CEH). Following a competitive selection process, Masaryk University (MUNI) joined
+eLTER~PPP and eLTER~PLUS in April~2024 as work-package and task leader with full
+responsibility for the architecture and core development of the eLTER~CI. eLTER is now
+transitioning from project-funded development toward sustained operation as a European
+Research Infrastructure Consortium (ERIC). In January~2026 MUNI, together with the
+Environment Agency Austria, was selected to host the eLTER ERIC Topic Centre for Data
+Management~\cite{elter-ref}.
 
 \subsection{eLTER CyberInfrastructure}
 \label{sec:bg-elter-ci}
 
 Connecting these distributed sites into a coherent research environment is the
 role of the eLTER CyberInfrastructure (eLTER~CI), developed under the eLTER~PLUS
-project. The CI provides two complementary pathways: site operators submit and
-curate datasets; researchers discover and access them through standardized
-endpoints. Key components include:
+project~\cite{elter-plus-d11.3}. The CI is designed as an integrated service ecosystem
+rather than a loose collection of tools: data, metadata, workflows, and user-facing
+applications share a uniform architecture with consistent identifiers, aligned metadata
+logic, and compatible access mechanisms. It is deployed on Kubernetes and managed through
+a GitOps workflow, enabling reproducible, automated operations across the distributed
+infrastructure.
+
+The CI supports two complementary pathways: site operators submit and curate datasets;
+researchers discover, access, and analyse them through standardised endpoints. Its core
+components include:
 
 \begin{itemize}
-  \item \textbf{eLTER~LogIn} --- federated identity via Perun~AAI (eduGAIN, ORCID,
-        EGI~Check-in) with role-based access control.
-  \item \textbf{Digital Asset Register (DAR)} --- dataset repository on InvenioRDM
-        with metadata curation, quality checks (Argo~Workflows), and DOI minting.
-  \item \textbf{DEIMS-SDR} --- the authoritative site metadata registry at
-        \texttt{deims.org}.
+  \item \textbf{eLTER~LogIn} --- federated identity management via Perun~AAI, supporting
+        authentication through eduGAIN, ORCID, EGI~Check-in, and Google, with
+        role-based access control (data providers, curators, researchers,
+        administrators). All authentication methods are linked to a single internal
+        user identity.
+  \item \textbf{Digital Asset Register (DAR)} --- a dataset repository built on
+        InvenioRDM with an eLTER-specific metadata model, automated quality checks
+        orchestrated by Argo~Workflows, DOI minting via DataCite, curator-mediated
+        publication, and a modular harvesting service that ingests metadata from
+        external repositories (B2SHARE, Zenodo, SITES, and others) so that externally
+        stewarded datasets become discoverable alongside locally deposited ones.
+  \item \textbf{DEIMS-SDR} --- the authoritative site and platform registry at
+        \texttt{deims.org}, providing stable identifiers, structured descriptions,
+        and contextual metadata for eLTER monitoring sites.
   \item \textbf{Vocabulary services} --- controlled terminologies (EnvThes,
-        eLTER Standard Observations) via SKOSMOS.
-  \item \textbf{Online data services} --- Time.IO for time-series access and
-        Spatial.IO (GeoServer) for geospatial layers, linked to DAR records.
-  \item \textbf{DataLabs} --- JupyterHub-based analytical environment for dataset
-        preprocessing and exploratory analysis.
+        eLTER Standard Observations, eLTER Controlled Lists) served through SKOSMOS
+        and Apache~Jena, enabling consistent semantic annotation of datasets across
+        providers.
+  \item \textbf{Online data services} --- Time.IO for time-series access
+        (TimescaleDB-backed) and Spatial.IO (GeoServer-based) for geospatial layers,
+        linked to DAR records through the Online Asset Register (OAR).
+  \item \textbf{DataLabs} --- a JupyterHub-based computational environment where
+        registered researchers can preprocess, transform, and analyse datasets using
+        curated container images (Python, R/RStudio, TensorFlow with GPU support,
+        MATLAB, and the eLTER-specific ReLTER package).
+  \item \textbf{Information Cluster and DiV} --- discovery and visualisation services
+        that let users filter sites and observed properties, inspect related datasets,
+        and visualise selected time series before downloading or analysing them
+        in~DataLabs.
+  \item \textbf{Service Portal} --- a catalogue of all eLTER tools and services with
+        descriptions, categorisation, and navigation support.
 \end{itemize}
 
-The stack runs on Kubernetes with a GitOps workflow. The CZU deployment functions as a
-site-level data acquisition node within this infrastructure.
+A key design principle of the eLTER~CI is that instances of its service stack can be
+shipped to eLTER partner sites, national networks, and affiliated institutions. The CZU
+deployment described in this thesis functions as such a site-level data acquisition
+node within this broader infrastructure.
 
 \subsection{Implications for Site-Level Deployments}
 \label{sec:bg-elter-implications}
 
-Several properties of the eLTER~CI constrain site-level platforms: data must be accessible
-through the OGC SensorThings API, sensors described using eLTER vocabularies, and
-authentication compatible with federated identity providers. Sites retain operational
-independence in hardware and infrastructure choices.
+Several properties of the eLTER~CI constrain site-level platforms. Observation
+data must be accessible through the OGC SensorThings API so that the central
+Digital Asset Register and Information Cluster can discover and link to it.
+Sensor metadata should reference eLTER controlled vocabularies (EnvThes,
+Standard Observations) to enable cross-site comparability, and observed
+properties should carry identifiers that map to the eLTER semantic layer.
+Authentication must be compatible with the eLTER~LogIn federated identity
+service, either directly or through a brokered Keycloak configuration.
+At the same time, sites retain operational independence: they choose their own
+hardware, container runtime, and hosting infrastructure, and they manage their
+sensor fleet through a local portal rather than through the central eLTER~CI.
 
-The gaps between the current CZU deployment and a production-ready eLTER integration are
-assessed in Section~\ref{sec:test-deployment-elter}.
+The gaps between the current CZU deployment and a production-ready eLTER
+integration are assessed in Section~\ref{sec:test-deployment-elter}.

@@ -188,7 +188,12 @@ in Chapter~\ref{chap:testing}.
     \emph{(UC-12)}
   \item[FR-17] The system shall display sensor locations on an interactive map with color-coded
     markers and popup details. WMS/WFS geospatial layers shall be overlayable. \emph{(UC-13)}
-  %% FR-18 removed — custom dashboards decommissioned.
+\end{description}
+
+\noindent\textit{Note:} FR-18 (custom dashboard builder) was removed during requirements
+refinement; the built-in Grafana dashboards provided by TSM fulfil this role.
+
+\begin{description}
   \item[FR-19] The system shall allow exporting Observation data as CSV files for offline
     analysis. \emph{(UC-14)}
 \end{description}
@@ -284,7 +289,7 @@ requirements identified in Sections~\ref{sec:req-functional} and~\ref{sec:req-no
 Each row identifies a capability that the upstream Time.IO system does not provide, the specific
 requirements it blocks, and the component that addresses the gap in this thesis.
 
-\begin{longtable}{l p{0.58\textwidth} p{0.19\textwidth}}
+\begin{longtable}{l p{0.62\textwidth} l}
   \caption{Gap analysis: Time.IO baseline vs.\ target platform requirements.}
   \label{tab:gap-analysis} \\
   \toprule

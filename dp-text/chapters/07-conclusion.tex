@@ -2,7 +2,7 @@
 \label{chap:conclusion}
 
 This thesis addressed the problem of deploying a standards-compliant sensor data
-management platform for Czech University of Life Sciences Prague within the European
+management platform for the Czech University of Life Sciences Prague within the European
 eLTER research infrastructure. The existing UFZ Time.IO solution provided per-Thing
 schema isolation, MQTT-driven worker pipelines, and OGC~STA data access, but lacked a
 usable sensor management interface, project-level access control, and a reproducible
@@ -43,12 +43,13 @@ The platform was validated through three complementary approaches:
 \begin{itemize}
   \item \textbf{Automated testing.} A backend suite of 804~unit and integration tests
         covers the service layer, API endpoints, middleware, and schema validation
-        (Section~\ref{sec:test-approach-backend}). All 20~functional requirements are
-        fully met (Section~\ref{sec:test-requirements}).
+        (Section~\ref{sec:test-approach-backend}). Of the 24~functional requirements,
+        23 are fully met and one (FR-22, Keycloak group management) is partially met
+        (Section~\ref{sec:test-requirements}).
 
   \item \textbf{Load testing.} Locust-based load tests with 10~and 25~concurrent users
-        confirmed that all API endpoints respond within the 2-second threshold required
-        by NFR-5. Lightweight CRUD operations maintain sub-15\,ms median latency;
+        confirmed that all API endpoints respond within the 2-second threshold.
+        Lightweight CRUD operations maintain sub-15\,ms median latency;
         data-heavy endpoints involving FROST-Server fan-out remain under 310\,ms at the
         95th~percentile. The system sustains 11.7~requests/second under 25~concurrent
         users (Section~\ref{sec:test-performance}).
@@ -78,7 +79,7 @@ upstream SMS service with local PostgreSQL views. These views work well operatio
 codebase whose upstream shows no sign of addressing the root cause.
 
 Backend test coverage, though extensive for the core service
-layer (797~tests; Section~\ref{sec:test-approach-backend}), has gaps in the FROST client integration
+layer (804~tests; Section~\ref{sec:test-approach-backend}), has gaps in the FROST client integration
 (14\% coverage for \texttt{async\_frost\_client}) and the SMS service adapter (14\%). These
 modules depend on external services that are hard to exercise without a running
 FROST-Server and Keycloak instance.

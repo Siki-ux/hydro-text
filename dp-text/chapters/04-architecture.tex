@@ -61,7 +61,7 @@ Figure~\ref{fig:arch-overview}.
 
     %% ── water-dp (label above-left, away from arrow landing) ──
     \node[layer, fill=blue!4] (wdp) at (3, -3.5) [minimum width=7cm, minimum height=5cm] {};
-    \node[font=\small\bfseries, anchor=south west] at (wdp.north west) {Water Data Platform (application layer) --- \emph{new}};
+    \node[font=\small\bfseries, anchor=south west] at (wdp.north west) {Water Data Platform (application layer)};
     \node[newbox] (frontend) at (1.2, -2.2) {Next.js\\Frontend};
     \node[newbox] (api)      at (4.8, -2.2) {FastAPI\\Backend};
     \node[newbox] (celery)   at (1.2, -3.8) {Celery\\Worker};
@@ -70,7 +70,7 @@ Figure~\ref{fig:arch-overview}.
     %% ── tsm-orchestration (label above-left, away from arrow landing) ──
     \node[layer, fill=orange!4] (tsm) at (12, -3.5) [minimum width=7cm, minimum height=5cm] {};
     \node[font=\small\bfseries, anchor=south west] at (tsm.north west)
-      {tsm-orchestration (infrastructure layer) --- \emph{inherited \& modified}};
+      {tsm-orchestration (infrastructure layer)};
     \node[box] (frost)   at (10.2, -2.2) {FROST-Server};
     \node[box] (kc)      at (13.8, -2.2) {Keycloak};
     \node[box] (grafana) at (10.2, -3.8) {Grafana};
@@ -78,7 +78,7 @@ Figure~\ref{fig:arch-overview}.
     \node[box] (cron)    at (12,   -5.2) {Cron Scheduler};
 
     %% ── Shared Data Layer ──
-    \node[layer, label={[font=\small\bfseries]north:Shared Data Layer --- \emph{inherited (upstream)}}]
+    \node[layer, label={[font=\small\bfseries]north:Shared Data Layer}]
       (data) at (7.5, -9) [minimum width=14cm, minimum height=2.2cm] {};
     \node[box] (db)    at (4,   -9) {PostgreSQL +\\TimescaleDB};
     \node[box] (minio) at (7.5, -9) {MinIO (S3)};
@@ -402,7 +402,7 @@ configuration message to the \texttt{frontend\_thing\_update} topic. The configd
 worker receives the message, validates the content version, and upserts the configuration into
 the \texttt{config\_db} schema. Upon successful storage, it publishes a notification to
 \texttt{configdb\_update}, which triggers the thing-setup worker. The thing-setup worker
-executes the six-step provisioning sequence described in Section~\ref{sec:arch-db-perthings},
+executes the five-step provisioning sequence described in Section~\ref{sec:arch-db-perthings},
 plus MQTT credential creation, MinIO bucket provisioning, and Grafana dashboard setup. This
 chain ensures that after a Thing is created through the portal, its entire infrastructure is
 provisioned automatically without manual intervention.
@@ -500,7 +500,12 @@ The \texttt{hydro-deploy} Makefile exposes the following primary targets:
   \item[make secrets] Runs \texttt{generate-secrets.sh} to populate the \texttt{.env} file
     with cryptographically secure passwords.
   \item[make build] Builds locally compiled Docker images (Keycloak themes, data platform
-    API and frontend).
+    API and frontend). When \texttt{PREBUILT=1} is set, this step is skipped and
+    \texttt{make up} pulls pre-built images from the GitHub Container Registry (GHCR)
+    instead, using an additional \texttt{docker-compose.prebuilt.yml} overlay that
+    replaces all \texttt{build:} directives with \texttt{image:} references.
+    A specific release can be pinned with \texttt{IMAGE\_TAG}
+    (e.g.\ \texttt{make PREBUILT=1 IMAGE\_TAG=v1.0 up}).
   \item[make up] Creates the \texttt{hydro-platform-net} network, then starts all services
     in a staged order: TSM core services first, then the GeoServer database, then
     GeoServer, and finally the data platform API, worker, and frontend.
