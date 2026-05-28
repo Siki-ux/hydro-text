@@ -6,14 +6,26 @@
 %% conditions are required by law.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\documentclass[
-  digital,     %% Submit digital version. Change to `printed` for print.
-  oneside,     %% One-sided for digital submission. Change to `twoside` for print.
-  nosansbold,
-  nocolorbold,
-  lof,         %% Print List of Figures. Replace with `nolof` to hide.
-  lot,         %% Print List of Tables.  Replace with `nolot` to hide.
-]{fithesis4}
+%% Use \bookformat (defined via command line) to switch between digital and print.
+\ifdefined\bookformat
+  \documentclass[
+    printed,     %% Printed (book) version.
+    twoside,     %% Two-sided for print binding.
+    nosansbold,
+    nocolorbold,
+    lof,
+    lot,
+  ]{fithesis4}
+\else
+  \documentclass[
+    digital,     %% Submit digital version.
+    oneside,     %% One-sided for digital submission.
+    nosansbold,
+    nocolorbold,
+    lof,         %% Print List of Figures. Replace with `nolof` to hide.
+    lot,         %% Print List of Tables.  Replace with `nolot` to hide.
+  ]{fithesis4}
+\fi
 
 %% Locale
 \usepackage{polyglossia}
@@ -30,8 +42,8 @@
     author      = Bc. Jakub Sikula,
     gender      = m,
     advisor     = {RNDr. Tomáš Rebok, Ph.D.},
-    title       = {Design and Implementation of a Platform for Real-Time Environmental Sensor Data Collection, Integration, and Visualization},
-    TeXtitle    = {Design and Implementation of a Platform for Real-Time Environmental Sensor Data Collection, Integration, and Visualization},
+    title       = {Design and Implementation of a Real-Time Sensor Data Platform for River and Catchment Monitoring},
+    TeXtitle    = {Design and Implementation of a Real-Time Sensor Data Platform for River and Catchment Monitoring},
     keywords    = {sensor data, environmental monitoring, OGC SensorThings API, MQTT, TimescaleDB, FastAPI, Next.js, Docker, eLTER},
     TeXkeywords = {sensor data, environmental monitoring, OGC SensorThings~API, MQTT, TimescaleDB, FastAPI, Next.js, Docker, eLTER},
     abstract    = {%

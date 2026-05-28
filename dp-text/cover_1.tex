@@ -1,0 +1,58 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Book cover (Czech variant) for hardcover print binding
+%% Build with: make cover1  (from the hydro-text directory)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[utf8]{inputenc}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage[margin=0pt]{geometry}
+
+\pagestyle{empty}
+
+\begin{document}
+\noindent
+\begin{tikzpicture}[x=1mm, y=1mm]
+
+  %% ── Page dimensions ───────────────────────────────────────────
+  \pgfmathsetmacro{\pw}{210}   % A4 width in mm
+  \pgfmathsetmacro{\ph}{297}   % A4 height in mm
+
+  %% invisible rectangle to set the bounding box
+  \path[use as bounding box] (0,0) rectangle (\pw,\ph);
+
+  %% ── MASARYKOVA UNIVERZITA (official Czech wordmark) ────────────
+  \node[anchor=north]
+    at (0.5*\pw, \ph-25) {%
+      \includegraphics[width=7cm]{fithesis-base-czech}%
+    };
+
+  %% ── Faculty name ─────────────────────────────────────────────
+  \node[anchor=north, font=\fontsize{15}{19}\selectfont\scshape]
+    at (0.5*\pw, \ph-50) {%
+      P\v{r}\'{i}rodov\v{e}deck\'{a} fakulta%
+    };
+
+  %% ── Diplomová práce ──────────────────────────────────────────
+  \node[font=\fontsize{18}{22}\selectfont\bfseries]
+    at (0.5*\pw, 0.5*\ph+10) {%
+      DIPLOMOV\'{A} PR\'{A}CE%
+    };
+
+  %% ── Year (bottom left) ───────────────────────────────────────
+  \node[anchor=south west, font=\fontsize{14}{18}\selectfont\bfseries\scshape]
+    at (20, 22) {%
+      2026%
+    };
+
+  %% ── Author name (bottom right) ───────────────────────────────
+  \node[anchor=south east, font=\fontsize{14}{18}\selectfont\bfseries\scshape]
+    at (\pw-20, 22) {%
+      Bc. Sab\'{i}na Nov\'{a}kov\'{a}%
+    };
+
+\end{tikzpicture}
+\end{document}

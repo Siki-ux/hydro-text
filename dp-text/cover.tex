@@ -1,0 +1,64 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Book cover for hardcover print binding
+%% Build with: make cover  (from the hydro-text directory)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{epstopdf}      %% convert EPS logos on the fly
+\usepackage[margin=0pt]{geometry}
+\usepackage{letterspace}  %% for letter-spacing
+
+\pagestyle{empty}
+
+\begin{document}
+\noindent
+\begin{tikzpicture}[x=1mm, y=1mm]
+
+  %% ── Page dimensions ───────────────────────────────────────────
+  \pgfmathsetmacro{\pw}{210}   % A4 width in mm
+  \pgfmathsetmacro{\ph}{297}   % A4 height in mm
+
+  %% invisible rectangle to set the bounding box
+  \path[use as bounding box] (0,0) rectangle (\pw,\ph);
+
+  %% ── Official MASARYK UNIVERSITY wordmark at top ────────────────
+  \node[anchor=north]
+    at (0.5*\pw, \ph-25) {%
+      \includegraphics[width=7cm]{fithesis-base-english}%
+    };
+
+  %% ── Faculty name ─────────────────────────────────────────────
+  \node[anchor=north, font=\fontsize{14}{18}\selectfont\scshape]
+    at (0.5*\pw, \ph-55) {%
+      Faculty of Informatics%
+    };
+
+  %% ── FI logo (circular seal) centred ───────────────────────────
+  \node at (0.5*\pw, 0.5*\ph+30) {%
+    \includegraphics[width=5.5cm]{fithesis-fi}%
+  };
+
+  %% ── MASTER'S THESIS label ────────────────────────────────────
+  \node[font=\fontsize{16}{20}\selectfont\bfseries\scshape]
+    at (0.5*\pw, 0.5*\ph-20) {%
+      Master's Thesis%
+    };
+
+  %% ── Year (bottom left) ───────────────────────────────────────
+  \node[font=\fontsize{14}{18}\selectfont\bfseries, anchor=south west]
+    at (20, 20) {%
+      2026%
+    };
+
+  %% ── Author name (bottom right) ───────────────────────────────
+  \node[font=\fontsize{14}{18}\selectfont\bfseries, anchor=south east]
+    at (\pw-20, 20) {%
+      Bc. Jakub Sikula%
+    };
+
+\end{tikzpicture}
+\end{document}

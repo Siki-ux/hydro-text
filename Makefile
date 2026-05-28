@@ -3,6 +3,15 @@ MAIN_LUA = fi-lualatex
 MAIN_PDF = fi-pdflatex
 FIGDIR   = $(TEXDIR)/figures
 
+# Set BOOK=1 for printed/book format (twoside binding)
+BOOK     ?= 0
+ifeq ($(BOOK),1)
+  BOOKDEF_PDF = "\def\bookformat{}\input{$(MAIN_PDF).tex}"
+  BOOKDEF_LUA = "\def\bookformat{}\input{$(MAIN_LUA).tex}"
+else
+  BOOKDEF =
+endif
+
 # Cross-platform commands
 ifeq ($(OS),Windows_NT)
     RM      = del /q
@@ -14,7 +23,7 @@ else
     OPENER  = xdg-open
 endif
 
-.PHONY: all lua pdf figures docx clean clean-all open open-pdf help
+.PHONY: all lua pdf figures docx clean clean-all open open-pdf cover cover1 help
 
 ## Default: build with LuaLaTeX (recommended for local use)
 all: figures lua
@@ -24,12 +33,22 @@ figures:
 	plantuml -tpdf $(FIGDIR)/*.puml
 
 ## Build with LuaLaTeX (better fonts, native UTF-8)
+## Use `make lua BOOK=1` for printed/book format
 lua:
+ifeq ($(BOOK),1)
+	cd $(TEXDIR) && lualatex -interaction=nonstopmode -jobname=$(MAIN_LUA) $(BOOKDEF_LUA) && biber $(MAIN_LUA) && lualatex -interaction=nonstopmode -jobname=$(MAIN_LUA) $(BOOKDEF_LUA) && lualatex -interaction=nonstopmode -jobname=$(MAIN_LUA) $(BOOKDEF_LUA)
+else
 	cd $(TEXDIR) && lualatex -interaction=nonstopmode $(MAIN_LUA).tex && biber $(MAIN_LUA) && lualatex -interaction=nonstopmode $(MAIN_LUA).tex && lualatex -interaction=nonstopmode $(MAIN_LUA).tex
+endif
 
 ## Build with pdfLaTeX (matches Overleaf compiler setting)
+## Use `make pdf BOOK=1` for printed/book format
 pdf:
+ifeq ($(BOOK),1)
+	cd $(TEXDIR) && pdflatex -shell-escape -interaction=nonstopmode -jobname=$(MAIN_PDF) $(BOOKDEF_PDF) && biber $(MAIN_PDF) && pdflatex -shell-escape -interaction=nonstopmode -jobname=$(MAIN_PDF) $(BOOKDEF_PDF) && pdflatex -shell-escape -interaction=nonstopmode -jobname=$(MAIN_PDF) $(BOOKDEF_PDF)
+else
 	cd $(TEXDIR) && pdflatex -shell-escape -interaction=nonstopmode $(MAIN_PDF).tex && biber $(MAIN_PDF) && pdflatex -shell-escape -interaction=nonstopmode $(MAIN_PDF).tex && pdflatex -shell-escape -interaction=nonstopmode $(MAIN_PDF).tex
+endif
 
 ## Open the LuaLaTeX PDF
 open: $(TEXDIR)/$(MAIN_LUA).pdf
@@ -38,6 +57,14 @@ open: $(TEXDIR)/$(MAIN_LUA).pdf
 ## Open the pdfLaTeX PDF
 open-pdf: $(TEXDIR)/$(MAIN_PDF).pdf
 	$(OPENER) $(TEXDIR)/$(MAIN_PDF).pdf
+
+## Build the hardcover book cover (separate PDF)
+cover:
+	cd $(TEXDIR) && pdflatex -shell-escape -interaction=nonstopmode cover.tex
+
+## Build the Czech hardcover book cover (separate PDF)
+cover1:
+	cd $(TEXDIR) && pdflatex -shell-escape -interaction=nonstopmode cover_1.tex
 
 ## Remove build artifacts (keep PDFs)
 clean:
