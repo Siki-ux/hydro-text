@@ -1,6 +1,8 @@
 TEXDIR   = dp-text
+PRESDIR  = dp-presentation
 MAIN_LUA = fi-lualatex
 MAIN_PDF = fi-pdflatex
+PRES     = fi
 FIGDIR   = $(TEXDIR)/figures
 
 # Set BOOK=1 for printed/book format (twoside binding)
@@ -23,7 +25,7 @@ else
     OPENER  = xdg-open
 endif
 
-.PHONY: all lua pdf figures docx clean clean-all open open-pdf cover cover1 help
+.PHONY: all lua pdf figures docx clean clean-all open open-pdf cover cover1 pres open-pres help
 
 ## Default: build with LuaLaTeX (recommended for local use)
 all: figures lua
@@ -65,6 +67,14 @@ cover:
 ## Build the Czech hardcover book cover (separate PDF)
 cover1:
 	cd $(TEXDIR) && pdflatex -shell-escape -interaction=nonstopmode cover_1.tex
+
+## Build defense presentation with LuaLaTeX
+pres:
+	cd $(PRESDIR) && lualatex -interaction=nonstopmode $(PRES).tex && biber $(PRES) && lualatex -interaction=nonstopmode $(PRES).tex && lualatex -interaction=nonstopmode $(PRES).tex
+
+## Open the defense presentation PDF
+open-pres: $(PRESDIR)/$(PRES).pdf
+	$(OPENER) $(PRESDIR)/$(PRES).pdf
 
 ## Remove build artifacts (keep PDFs)
 clean:
@@ -111,8 +121,10 @@ help:
 	@echo "  figures    Regenerate PlantUML figures (PDF)"
 	@echo "  lua        Build with LuaLaTeX (local, recommended)"
 	@echo "  pdf        Build with pdfLaTeX  (matches Overleaf)"
+	@echo "  pres       Build defense presentation (LuaLaTeX)"
 	@echo "  open       Open LuaLaTeX PDF in viewer"
 	@echo "  open-pdf   Open pdfLaTeX PDF in viewer"
+	@echo "  open-pres  Open defense presentation PDF"
 	@echo "  pagecount  Count standard pages (1 page = 1800 chars)"
 	@echo "  docx       Convert thesis to DOCX (requires pandoc)"
 	@echo "  clean      Remove build artifacts (keep PDFs)"
