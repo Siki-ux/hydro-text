@@ -1,133 +1,132 @@
 ### Snímok 1: Titulný snímok (~15 sec)
 
-> Dobrý deň, volám sa Jakub Sikula a rád by som vám predstavil svoju diplomovú prácu s názvom „Design and Implementation of a Real-Time Sensor Data Platform for River and Catchment Monitoring". Vedúcim práce bol pan doktor Tomaš Rebok.
+> Dobrý deň, vážená komisia, rád by som vám predstavil diplomovú prácu, ktorá sa venuje návrhu a implementácii platformy pre zber a správu dát z environmentálnych senzorov.
 
 ---
 
 ### Snímok 2: Problém a motivácia (~1 min)
 
-> Environmentálne senzorové siete produkujú nepretržité toky heterogénnych dát. Rôzni výrobcovia, rôzne komunikačné protokoly — MQTT, SFTP, CSV upload — a rôzne dátové formáty. Zjednotiť tieto dáta pod jednu platformu je naozaj netriviálny problém.
+> Environmentálne senzorové siete produkujú nepretržité toky heterogénnych dát. Rôzni výrobcovia, rôzne protokoly, rôzne formáty.
 >
-> Česká zemědělská univerzita v Prahe prevádzkuje monitorovaciu infraštruktúru na riečnych povodiach, ale doteraz nemala žiadnu jednotnú platformu, ktorá by tieto dáta spravovala štandardizovaným spôsobom.
+> Česká zemědělská univerzita v Prahe prevádzkuje monitoring povodí a experimentálnych plôch, ale doteraz nemala jednotnú platformu na správu týchto dát.
 >
-> Ako východisko sme zvolili open-source systém Time.IO, vyvinutý v Helmholtz Centre v Lipsku. Toto nasadenie je zároveň pilotným projektom v rámci európskej výskumnej infraštruktúry eLTER, ktorej cieľom je dlhodobý ekosystémový monitoring.
+> Ako východisko bol zvolený open-source systém Time.IO z Helmholtz Centre v Lipsku. 
+>
+> Práca vznikla v kontexte projektov Chytrých krajín ČZU a zároveň ako príprava pre pilotné nasadenie v rámci európskej výskumnej infraštruktúry eLTER.
 
 ---
 
 ### Snímok 3: Východisko: UFZ Time.IO (~1 min)
 
-> Na diagrame vidíte architektúru Time.IO tak, ako sme ju zdedili. Hore vstupujú dáta z MQTT senzorov do Mosquitto brokera. Ten ich rozdelí medzi ingestion workery — mqtt-ingest, file-ingest, run-qaqc a ďalšie — ktoré ukladajú observácie do PostgreSQL s TimescaleDB. Každý senzor má vlastnú schému, takzvané per-thing schemas.
+> Na tomto diagrame vidíte architektúru Time.IO tak, ako bola zdedená. Hore vstupujú dáta z MQTT senzorov do Mosquitto brokera. Ten ich rozdelí medzi ingestion workery, napríklad mqtt-ingest alebo file-ingest, ktoré ukladajú observácie do PostgreSQL. Každý senzor má vlastnú databázovú schému, takzvané per-thing schemas.
 >
-> Pod workermi sú služby: FROST-Server pre OGC SensorThings API, Keycloak pre autentifikáciu, Grafana a Cron ktory spušťa ulohy na napriklad pravidelne getovanie dat z externych API. Súbory z SFTP alebo CSV uploadov idú priamo do MinIO.
+> Pod workermi sú služby. FROST-Server sprístupňuje dáta cez OGC SensorThings API. Keycloak rieši autentifikáciu. Grafana vizualizáciu. Cron spúšťa periodické úlohy. Súbory z SFTP alebo CSV uploadov idú priamo do MinIO ktore produkuje MQTT spravy pre file-ingest.
 >
-> Ale všimnite si červené čiarky. SMS Backend nikdy nepodarilo sprevádzkovať — a FROST-Server aj Grafana na ňom záviseli cez SQL views. Upstream frontendy posielali nevalidné MQTT správy do brokera, čo spôsobovalo tiché zlyhania. Tieto a mnoho ďalších problémom definovalo rozsah mojej práce.
+> Všimnite si ale červeno vyznačené části. Najvyraznejším z rady problemov bol Sensor Management System, ktorý sa nikdy nepodarilo sprevádzkovať. Záviseli na ňom FROST-Server, Grafana a ďalšie services. Upstream frontendy zase posielali nevalidné MQTT správy do brokera, čo spôsobovalo tiché zlyhania workerov a ich backendy očakavali úplne iný databázový model.
 
 ---
 
 ### Snímok 4: Analýza nedostatkov (~1 min 15 sec)
 
-> Nedostatky som rozdelil do dvoch skupín. Prvá sú technické problémy v upstream kóde — to, čo vidíte na predchádzajúcom diagrame červenou.
+> Nedostatky som rozdelil teda do dvoch skupín. Prvá sú technické problémy v upstream kóde, teda tie červené časti z predchádzajúceho diagramu.
 >
-> FROST-Server bol nefunkčný kvôli závislosti na SMS. Upstream frontendy posielali nevalidné MQTT správy. Celý systém bol hardcoded pre UFZ prostredie — Keycloak klienti s natvrdo zadanými UFZ prefixmi, špecificky nakonfigurované scopes — a k ničomu z toho neexistovala dokumentácia. Veľa času som strávil dolovaním z kódu, prečo niektoré časti nefungujú.
+> Okrem nefunkčného SMS backendu a chybných frontendov bol celý systém hardcoded pre UFZ prostredie. Keycloak klienti mali natvrdo zadané UFZ prefixy a mali špecificky nakonfigurované scopes. Obecne chybalo riešenie chýb, workeri padali pri každom neočakavanom inpute a k ničomu z toho neexistovala dokumentácia.
 >
-> K tomu upstream tím kontinuálne vyvíjal bez ohľadu na backward kompatibilitu — mazali staršie verzie a artefakty. Napriek pinnovaniu verzií som musel neustále preberať upstream zmeny. Nachádzal som závažné bugy, ktoré po pár týždňoch opravili, ale nemohol som ich reportovať, pretože mi nedali prístup k ich bug trackeru.
+> Upstream TSM tím kontinuálne vyvíjal bez ohľadu na backward kompatibilitu. Mazali staršie verzie a artefakty, teda bolo nutné neustále preberať ich nové zmeny, ktoré obsahovali chyby a často znefukčnili iné časti systemu.
 >
-> Druhá skupina sú chýbajúce funkcie pre ČZU — žiadny webový portál, projektová správa, upozornenia, jednotné nasadenie a viacjazyčnosť.
->
-> Celkovo jedenásť nedostatkov, ktoré definovali rozsah mojej práce.
+> Druhá skupina sú chýbajúce funkcie pre ČZU. Neexistoval fungujúci webový portál, projektová správa dát, systém upozornení, jednotné nasadenie, správa senszorov, viacjazyčnosť a iné. Celkovo som indetifikoval jedenásť nedostatkov, ktoré definovali rozsah mojej práce.
 
 ---
 
 ### Snímok 5: Ciele práce (~30 sec)
 
-> Ciele práce sú štyri. Prvý — analyzovať Time.IO voči požiadavkám ČZU a eLTER. Druhý — navrhnúť a implementovať Water Data Platform, teda aplikačnú vrstvu s projektmi, portálom, upozorneniami a mapami. Tretí — implementovať jednotné nasadenie, hydro-deploy. A štvrtý — vyhodnotiť výslednú platformu voči identifikovaným požiadavkám.
+> V ramci práce boli zadefinované 4 ciele. Analyzovať Time.IO voči požiadavkám ČZU a eLTER a adadaptovat zdedené koponenty. Navrhnúť a implementovať Water Data Platform, ako aplikačnú vrstvu s projektmi, portálom, upozorneniami a mapami. Implementovať jednotné nasadenie, a nakoniec vyhodnotiť výslednú platformu voči identifikovaným požiadavkám.
 
 ---
 
 ### Snímok 6: Architektúra riešenia (~1 min 30 sec)
 
-> Toto je kľúčový snímok — architektúra celého riešenia.
+> Z návrhu vyznikla nasledovná architektúra.
 >
-> Platforma má dve runtime vrstvy. Vpravo je tsm-orchestration, infraštruktúrna vrstva, zdedená a upravená. Obsahuje FROST-Server, Keycloak, Grafanu, ingestion workery a cron scheduler. Komponenty v oranžovej farbe som modifikoval — najmä ingestion workery, kde som upravoval provisioning, parsery a MQTT integráciu.
+> Platforma má dve runtime vrstvy. Vpravo je tsm-orchestration tada infraštruktúrna vrstva, ktorú som zdedil a upravil. Obsahuje FROST-Server, Keycloak, Grafanu, ingestion workery a cron scheduler. Komponenty v oranžovej farbe som značne modifikoval. Najmä ingestion workery, kde som pridaval provisioning, dynamické parsery, error handling a iné.
 >
-> Vľavo, v modrej, je Water Data Platform — celá táto vrstva je nová, navrhnutá a implementovaná v rámci tejto práce. Obsahuje FastAPI backend, Next.js frontend, Celery worker pre asynchrónne úlohy a GeoServer pre geospatial vrstvy.
+> Vľavo v modrej farbe je Water Data Platform. Celá táto vrstva je nová, navrhnutá a implementovaná v rámci tejto práce. Obsahuje FastAPI backend, Next.js frontend, Celery worker pre asynchrónne úlohy a GeoServer pre geospatial vrstvy.
 >
-> Dole je zdieľaná dátová vrstva — jeden PostgreSQL s TimescaleDB, MinIO pre súbory a Mosquitto MQTT broker ako integračná chrbtica. MQTT zariadenia posielajú dáta priamo do brokera.
+> Na spodku je zdieľaná dátová vrstva. Teda PostgreSQL databaza s TimescaleDB extension, MinIO pre súbory a Mosquitto MQTT broker ako integračná chrbtica. Senzori posielajú dáta priamo do brokera.
 >
-> Dôležité rozhodnutie: tieto dve vrstvy sú oddelené, čo umožňuje nezávislý vývoj a jednoduchšie updaty z upstreamu.
+> Kľúčovým rozhodnutím bolo forknúť tsm-orchestration a udržiavať ho ako samostatnú vrstvu. Vďaka tomu bolo možné vyvíjať vrstvy nezávisle a zároveň preberať updaty z upstreamu.
 
 ---
 
-### Snímok 7: Čo som vytvoril (~1 min)
+### Snímok 7: Čo som vytvoril (~1 min 15 sec)
 
-> Poďme si zhrnúť tri hlavné príspevky.
+> Práca má dva hlavné príspevky.
 >
-> Prvý — TSM adaptácia. Nahradil som nefunkčné STA views deviatimi lokálnymi views, čím sa FROST-Server stal funkčným. Upravil som tiež ingestion workery — provisioning, parsery a MQTT integráciu. Celkovo je v kóde osemnásť označených workaroundov, pripravených na jednoduchý revert.
+> Prvým je adaptácia TSM vrstvy. Nahradil som nefunkčné databázové pohľady deviatimi lokálnymi pohľadmi a tým som dostal FROST-Server do funkčného stavu. Celkovo je v kóde 18 označených dočasných riešení okolo natvrdo zadaných UFZ závislostí, pripravených na jednoduchý návrat k pôvodnému stavu, a množstvo menších opráv.
 >
-> Druhý — Water Data Platform. Kompletne nová aplikačná vrstva: FastAPI backend a Next.js 15 portál s projektovou správou, dvojúrovňovým RBAC, systémom upozornení, interaktívnymi mapami a podporou troch jazykov.
+> Druhým príspevkom je Water Data Platform. Kompletne nová aplikačná vrstva s FastAPI backendom a Next.js 15 portálom. Obsahuje projektovú správu senzorov s dvojúrovňovým RBAC, zjednodušenú správu senzorov ako náhradu nefunkčného SMS z upstreamu, konfiguráciu QA/QC pipeline cez SaQC, systém upozornení, interaktívne mapy,viacjazyčnú podporu a ďalšie.
 >
-> Tretí — hydro-deploy. Jediný príkaz `make up` naštartuje dvadsaťdva kontajnerov. Automatická správa hesiel a health-check.
+> K tomu patrí aj deployment vrstva, kde je možné jedným príkazom naštartovať celú platformu s automatickou správou hesiel a health-checkom.
 
 ---
 
 ### Snímok 8: Portál – správa projektov a senzorov (~1 min 30 sec)
 
-> Tu vidíte ukážky z portálu. Vľavo je zoznam projektov — každý projekt zobrazuje popis, počet prepojených senzorov a rolu používateľa. Projekty sú filtrovateľné podľa Keycloak skupín.
+> K user facing portalu,...
+> Vľavo je zoznam projektov. Kde každý projekt zobrazuje popis, počet prepojených senzorov a rolu prihláseného používateľa. Projekty sú filtrovateľné podľa Keycloak skupín.
 >
-> Vpravo je detail senzora s vizualizáciou časových radov. Grafy sú interaktívne — podporujú zoom, výber časového rozsahu a prepínanie medzi datastreams. Dáta sa načítavajú cez React Query s cachingom.
+> Vpravo je detail konkrétneho senzoru s vizualizáciou časovej rady. Grafy sú interaktívne, podporujú zoom, výber časového rozsahu a prepínanie medzi datastreams. Dáta sa načítavajú cez React Query s cachingom.
 >
-> Celý portál je viacjazyčný — angličtina, čeština a slovenčina — s automatickou detekciou jazyka prehliadača.
+> Celý portál je viacjazyčný. Momentalne podporuje angličtinu, češtinu a slovenčinu, s automatickou detekciou jazyka prehliadača.
 
 ---
 
 ### Snímok 9: Interaktívna mapa a GeoServer vrstvy (~1 min)
 
-> Ďalšou kľúčovou funkciou je interaktívna mapa. Senzory sú zobrazené ako farebné markery na CARTO basemape. Po kliknutí na senzor sa zobrazí popup s aktuálnymi hodnotami — tu napríklad vodná hladina a teplota.
+> Ďalšou kľúčovou funkciou sú interaktívne mapy. Senzory sú zobrazené ako farebné markery na CARTO basemape. Po kliknutí na senzor sa zobrazí popup s aktuálnymi hodnotami, tu je to napríklad vodná hladina a teplota.
 >
-> Cez GeoServer je možné prekryť WMS vrstvy — napríklad hranice povodí alebo geologické mapy. Vrstva sa dá zapnúť a vypnúť v layer selectore vľavo hore. Celé je postavené na MapLibre GL JS s tridsaťsekundovým auto-refreshom.
+> Vďaka GeoServeru je možné prekryť WMS vrstvy, napríklad hranice povodí alebo geologické mapy. Vrstvy sa dajú zapnúť a vypnúť v layer selectore vľavo hore. Celé je postavené na MapLibre s 30 sekundovým auto-refreshom.
 
 ---
 
-### Snímok 10: Nasadenie jedným príkazom (~1 min)
+### Snímok 10: Správa senzorov a QA/QC (~1 min)
 
-> Posledný komponent je deployment layer. Operátor spustí `make up` a celá platforma — dvadsaťdva kontajnerov — sa naštartuje v správnom poradí.
+> Vľavo vidíte rozhranie pre správu senzorov. Toto je zjednodušená náhrada nefunkčného upstream SMS. Operátor tu definuje senzory, ich parsery a konfiguráciu priamo cez portál, bez potreby manuálne editovať MQTT správy.
 >
-> Funguje to tak, že štyri Docker Compose súbory sa mergujú do jednej konfigurácie. Skripty automaticky vygenerujú kryptograficky bezpečné heslá a synchronizujú ich medzi stackami.
->
-> `make check` overí zdravie všetkých služieb. Celé je navrhnuté tak, aby operátor nepotreboval znalosti vnútornej architektúry. Podporovaný je aj rootless Podman pre prostredia bez Docker démona.
+> Vpravo je konfigurácia QA/QC pipeline. Platforma integruje SaQC framework, kde si používateľ nakonfiguruje kontrolné pravidlá pre každý datastream. Po uložení sa pravidlá automaticky aplikujú na prichádzajúce dáta.
 
 ---
 
 ### Snímok 11: Testovanie a validácia (~1 min 30 sec)
 
-> Teraz k validácii. Backend má osemsto štyri testov pokrývajúcich API endpointy, služby, RBAC a alerty. Frontend má deväťdesiatšesť testov cez Vitest. Z upstreamu sme zdedili stotridsaťjeden testov — všetky prechádzajú. Celkovo vyše tisíc automatizovaných testov.
+> Teraz k validácii. Vytvorených bolo 804 testov pre backend, pokrývajúcich API endpointy, služby, RBAC a alerty. Frontend má 96 testov cez Vitest. Z upstreamu som zdedil 131 testov, ktoré všetky prechádzajú aj napriek násobným zmenám v kóde. Celkovo vyše tisíc automatizovaných testov.
 >
-> Z dvadsiatich štyroch funkčných požiadaviek sme dvadsaťtri splnili úplne. Jedna — správa Keycloak skupín cez portál — bola čiastočne splnená, používatelia ju riešia priamo cez Keycloak admin konzolu.
+> Z  funkčných požiadaviek bolo 23 splnených úplne. Jedna, správa Keycloak skupín cez portál, bola len čiastočne splnená. Používatelia zahlasili že to chcú riešiť priamo cez Keycloak.
 >
-> Záťažové testy cez Locust potvrdili odozvu pod tristodesať milisekúnd na deväťdesiatom piatom percentile pri dvadsiatich piatich súbežných používateľoch. Platforma je nasadená na cloud.muni.cz a ČZU ju aktuálne testuje v malom rozsahu s niekoľkými senzormi.
+> Záťažové testy cez Locust potvrdili odozvu pod 310 milisekúnd na 95. percentile pri 25 súbežných používateľoch a 150 simulovaných senzoroch. Platforma je nasadená na cloud.muni.cz a ČZU ju niekoľko mesiacov testovala v malom rozsahu s reálnymi senzormi. Na základe tejto testovacej prevádzky sa nedávno rozhodli pre plnú integráciu svojej senzorovej infraštruktúry do platformy.
 
 ---
 
 ### Snímok 12: Kľúčové zistenie (~1 min)
 
-> Aké je hlavné zistenie tejto práce?
+> Teda aké je hlavné zistenie tejto práce?
 >
-> Architektonické myšlienky za Time.IO sú správne. Per-thing izolácia v databáze, MQTT-driven worker pipeline a OGC SensorThings API ako interoperabilný štandard — to všetko funguje.
+> Architektonické myšlienky za Time.IO sú správne. Per-thing izolácia v databáze, MQTT-driven worker pipeline a OGC SensorThings API ako otvorený štandard. To všetko na papieri funguje.
 >
-> Problém je v upstream implementácii. SMS služba nikdy nebola funkčná, frontendy generovali chybné správy, kód bol hardcoded pre UFZ bez dokumentácie a upstream tím kontinuálne lámal backward kompatibilitu. Podpora pre externých prispievateľov prakticky neexistuje — nemali sme ani prístup k bug trackeru. V kóde je stále osemnásť dočasných workaroundov.
+> Problém je v kvalite upstream implementácie a v prístupe upstream tímu k externým prispievateľom.
 >
-> Záver je, že účelová implementácia zameraná na konkrétne potreby eLTER by bola udržateľnejšia než ďalšia adaptácia upstream kódu.
+> Môj záver je, že účelová implementácia zameraná na konkrétne potreby eLTERu by bola udržateľnejšia než ďalšia adaptácia tohto upstream kódu.
 
 ---
 
 ### Snímok 13: Obmedzenia a budúca práca (~1 min)
 
-> Budem úprimný ohľadom obmedzení. TSM-TEMP workaroundy sú stále v kóde. Testovacie pokrytie FROST clienta je len štrnásť percent. Platforma nebola overená vo väčšej mierke než ČZU a ešte nie je pripravená pre plnú eLTER integráciu.
+> Ohľadom obmedzení. V TSM vrstve sa stále používajú dočasné riešenia. Chýbajú automatizované integračné a systémové testy. Platforma nebola overená vo väčšej mierke než stovkách virtuálnych senzorov a desiatkach simulovaných používateľov. Platforma podporuje potrebné štandardy, ale samotná integrácia so službami eLTER infraštruktúry ešte nebola realizovaná.
 >
-> Budúca práca zahŕňa prepísanie TSM komponentov s čistou STA vrstvou, integráciu eLTER metadátových štandardov — DEIMS-SDR, EnvThes a LogIn — a implementáciu federácie medzi nezávislými inštanciami platformy.
+> Budúca práca zahŕňa prepísanie TSM komponentov bez závislosti na upstream kóde, napojenie na služby infraštruktúry eLTER a rozšírenie záťažových testov s pilotným nasadením na ďalších pracoviskách.
 
 ---
 
 ### Snímok 14: Ďakujem za pozornosť (~10 sec)
 
-> Ďakujem za pozornosť. Som pripravený odpovedať na otázky z posudkov, a potom na vaše otázky.
+> Ďakujem za pozornosť. Som pripravený odpovedať na otázky z posudkov a potom na vaše otázky.

@@ -16,7 +16,9 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, calc, positioning}
 \usepackage{colortbl}
-\graphicspath{{../dp-text/figures/}}
+\usepackage{etoolbox}
+\usepackage{appendixnumberbeamer}
+\graphicspath{{../dp-text/figures/}{./}}
 
 \usetheme[
   workplace=fi,
@@ -27,7 +29,7 @@
 \subtitle[Obhajoba diplomovej práce]{Obhajoba diplomovej práce}
 \author[J.\,Sikula]{Bc.\,Jakub Sikula\texorpdfstring{\\}{, }557305@mail.muni.cz\texorpdfstring{\\[0.5em]\footnotesize Vedúci práce: RNDr.\,Tomáš Rebok, Ph.D.}{}}
 \institute[FI MU]{Fakulta informatiky, Masarykova univerzita}
-\date{\today}
+\date{18.\,6.\,2026}
 \subject{Obhajoba diplomovej práce}
 \keywords{senzorové dáta, environmentálny monitoring, OGC SensorThings API,
   MQTT, TimescaleDB, FastAPI, Next.js, Docker, eLTER}
@@ -47,15 +49,28 @@
 
 %% SLIDE 2 — Problém a motivácia
 \begin{frame}{Problém a motivácia}
+\begin{tikzpicture}[remember picture, overlay]
+  \node[anchor=north east, opacity=0.9] at ([xshift=-0.3cm, yshift=-0.8cm]current page.north east)
+    {\includegraphics[width=2.8cm]{river-sensor-icon.png}};
+\end{tikzpicture}
 \begin{itemize}
-  \item Environmentálne senzorové siete: \alert{heterogénne dáta},
-        rôzne protokoly, rôzni výrobcovia
-  \item ČZU Praha - monitoring povodí a experimentálnych plôch,
-        \textbf{žiadna jednotná platforma}
+  \item Environmentálne senzorové siete:
+    \begin{itemize}
+      \item \alert{heterogénne dáta v~reálnom čase}
+      \item rôzne protokoly
+      \item rôzni výrobcovia
+    \end{itemize}
+  \item ČZU Praha - monitoring povodí a~experimentálnych plôch
+    \begin{itemize}
+      \item \textbf{žiadna jednotná platforma}
+    \end{itemize}
   \item Východisko: open-source \textbf{UFZ Time.IO}
         (Helmholtz Centre, Lipsko)
-  \item Kontext: pilotné nasadenie v~rámci európskej
-        infraštruktúry \textbf{eLTER}
+  \item Kontext: podpora projektov Chytrých krajín ČZU
+    \begin{itemize}
+      \item príprava pre pilotné nasadenie v~rámci európskej
+            infraštruktúry \textbf{eLTER}
+    \end{itemize}
 \end{itemize}
 \end{frame}
 
@@ -196,22 +211,22 @@
 \begin{frame}{Analýza nedostatkov}
 \begin{block}{Technické problémy upstream}
   \begin{itemize}
-    \item \alert{Nefunkčný FROST-Server} – závislosť na SMS backendu
+    \item \alert{Nefunkčný FROST-Server} – kvôli nefunkčnému SMS backendu
     \item \alert{Upstream frontendy} – nevalidné MQTT správy
     \item Hardcoded UFZ konfigurácia, \textbf{žiadna dokumentácia}
-    \item Nestabilný upstream vývoj – breaking changes,
-          žiadna backward kompatibilita
+    \item Nestabilný upstream vývoj – nekompatibilné zmeny,
+          žiadna spätná kompatibilita
   \end{itemize}
 \end{block}
 \vspace{0.3em}
 \begin{block}{Chýbajúce funkcie pre ČZU}
   \begin{itemize}
-    \item Žiadny webový portál, projektová správa, upozornenia
-    \item Žiadne jednotné nasadenie, viacjazyčnosť
+    \item Žiadny webový portál, projektová správa, správa senzorov
+    \item Žiadne jednotné nasadenie, viacjazyčnosť, upozornenia
   \end{itemize}
 \end{block}
 \vspace{0.3em}
-Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
+Celkovo \textbf{11 zasadných nedostatkov} $\rightarrow$ definujú rozsah práce.
 \end{frame}
 
 %% ====================================================================
@@ -224,7 +239,7 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
   \item \textbf{Analyzovať} Time.IO voči požiadavkám ČZU/eLTER
   \item \textbf{Navrhnúť a~implementovať} Water Data Platform
         - projekty, portál, upozornenia, mapy
-  \item \textbf{Implementovať} jednotné nasadenie
+  \item \textbf{Implementovať} jednotné a automatizované nasadenie
         (\texttt{hydro-deploy})
   \item \textbf{Vyhodnotiť} platformu voči požiadavkám
 \end{enumerate}
@@ -262,8 +277,8 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
   \node[font=\tiny\bfseries, anchor=south west] at (tsm.north west)
     {tsm-orchestration (infrastructure layer)};
   \node[box]    (frost)   at (7.7, -1.3) {FROST-Server};
-  \node[box]    (kc)      at (10.3,-1.3) {Keycloak};
-  \node[box]    (grafana) at (7.7, -2.6) {Grafana};
+  \node[modbox] (kc)      at (10.3,-1.3) {Keycloak};
+  \node[modbox] (grafana) at (7.7, -2.6) {Grafana};
   \node[modbox] (workers) at (10.3,-2.6) {Ingestion\\[-1pt]Workers};
   \node[box]    (cron)    at (9,   -3.7) {Cron Scheduler};
 
@@ -272,12 +287,12 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
     [minimum width=10.6cm, minimum height=1.6cm] {};
   \node[font=\tiny\bfseries, anchor=south] at (data.north)
     {Shared Data Layer};
-  \node[box] (db)    at (3,   -5.8) {PostgreSQL +\\[-1pt]TimescaleDB};
+  \node[modbox] (db)    at (3,   -5.8) {PostgreSQL +\\[-1pt]TimescaleDB};
   \node[box] (minio) at (5.5, -5.8) {MinIO (S3)};
   \node[box] (mqtt)  at (8,   -5.8) {Mosquitto\\[-1pt]MQTT Broker};
 
   %% ── MQTT Device ──
-  \node[font=\small\bfseries, align=center] (device) at (11.2, -5.8)
+  \node[font=\small\bfseries, align=center] (device) at (12.0, -5.8)
     {MQTT\\[-1pt]Device};
 
   %% ═══════ ARROWS ═══════
@@ -314,19 +329,23 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
 
 %% SLIDE 7 — Čo som vytvoril
 \begin{frame}{Čo som vytvoril}
-\begin{block}{1. TSM adaptácia}
-  9~lokálnych STA views $\rightarrow$ \textbf{FROST-Server funkčný};
-  úpravy ingestion workerov (provisioning, parsery, MQTT integrácia);
-  18~označených workaroundov
+\begin{block}{1. Adaptácia TSM (Time Series Management)}
+  9~lokálnych databázových pohľadov (SensorThings API)
+  $\rightarrow$ \textbf{FROST-Server funkčný};
+  úpravy ingestion systemu; 
+  18~označených dočasných riešení
 \end{block}
 \begin{block}{2. Water Data Platform}
-  FastAPI + Next.js~15 portál: \textbf{projekty, RBAC,
-  upozornenia, mapy, 3~jazyky}
+  FastAPI backend + Next.js~15 portál:
+  \textbf{projekty} s~dvojúrovňovým RBAC,
+  \textbf{správa senzorov} (náhrada SMS),
+  QA/QC (SaQC),
+  \textbf{upozornenia} (prahy, výpadky dát),
+  interaktívne mapy, viacjazyčná podpora
 \end{block}
-\begin{block}{3. hydro-deploy}
-  \texttt{make up} $\rightarrow$ \textbf{22~kontajnerov};
-  správa hesiel, health-check
-\end{block}
+\vspace{0.3em}
+{\footnotesize Nasadenie: \texttt{make up} $\rightarrow$ 22~kontajnerov,
+automatická správa hesiel, overenie zdravia služieb}
 \end{frame}
 
 %% ====================================================================
@@ -358,31 +377,19 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
 \end{frame}
 
 %% ====================================================================
-\section{Nasadenie}
+\section{Ďalšie funkcie platformy}
 %% ====================================================================
 
-%% SLIDE 10 — Nasadenie jedným príkazom
-\begin{frame}{Nasadenie jedným príkazom}
+%% SLIDE 10 — Správa senzorov a QA/QC
+\begin{frame}{Správa senzorov a~QA/QC}
 \begin{columns}[T]
-  \begin{column}{0.55\textwidth}
-    \begin{itemize}
-      \item \texttt{make up} $\rightarrow$ \textbf{22~kontajnerov}
-      \item 4 Compose súbory $\rightarrow$ 1~platforma
-      \item Automatická správa hesiel
-      \item Health-check (\texttt{make check})
-      \item Podpora rootless Podman
-    \end{itemize}
+  \begin{column}{0.48\textwidth}
+    \includegraphics[width=\textwidth]{screenshot-sms.png}
+    \centerline{\footnotesize Správa senzorov (náhrada SMS)}
   \end{column}
-  \begin{column}{0.42\textwidth}
-    \begin{block}{\footnotesize Docker Compose merge}
-      \footnotesize
-      \texttt{tsm/docker-compose.yml}\\
-      \texttt{water-dp/\ldots.yml}\\
-      \texttt{water-dp/\ldots.tsm.yml}\\
-      \texttt{hydro-deploy/\ldots.yml}
-    \end{block}
-    \vspace{0.5em}
-    {\footnotesize Operátor nepotrebuje znalosti vnútornej architektúry.}
+  \begin{column}{0.48\textwidth}
+    \includegraphics[width=\textwidth]{screenshot-qaqc.png}
+    \centerline{\footnotesize Konfigurácia QA/QC}
   \end{column}
 \end{columns}
 \end{frame}
@@ -410,9 +417,14 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
 \vspace{0.5em}
 \begin{itemize}
   \item \textbf{23 z~24} funkčných požiadaviek \alert{splnených}
+    \begin{itemize}
+      \item[\tiny$\bullet$] čiastočne: správa Keycloak skupín
+            - používatelia preferujú priamo cez Keycloak
+    \end{itemize}
   \item Záťažové testy: $<$310\,ms na 95.~percentile,
-        11{,}7~req/s
-  \item Nasadené na \textbf{cloud.muni.cz}, testované ČZU
+        11{.}7~req/s
+  \item Nasadené na \textbf{cloud.muni.cz}; ČZU po~testovacej prevádzke
+        rozhodla o~plnej integrácii svojej infraštruktúry
 \end{itemize}
 \end{frame}
 
@@ -432,8 +444,8 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
 \end{alertblock}
 \vspace{0.5em}
 \begin{itemize}
-  \item 18~dočasných workaroundov (TSM-TEMP) stále v~kóde
-  \item Upstream neodpovedá na externých kontribútorov
+  \item 18~dočasných riešení stále v~kóde
+  \item Upstream neodpovedá na externých prispievateľov
 \end{itemize}
 \end{frame}
 
@@ -441,18 +453,20 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
 \begin{frame}{Obmedzenia a~budúca práca}
 \textbf{Obmedzenia:}
 \begin{itemize}
-  \item TSM-TEMP workaroundy, testovacie medzery (FROST client 14\,\%)
+  \item Dočasné riešenia v~TSM vrstve, chýbajúce integračné a~systémové testy
   \item Neoverené vo veľkej mierke (nad rámec ČZU)
-  \item Platforma ešte nie je eLTER-ready
+  \item Integrácia s~eLTER službami ešte nebola realizovaná
 \end{itemize}
 \vspace{0.5em}
 \textbf{Budúca práca:}
 \begin{itemize}
-  \item Prepísanie TSM komponentov (čistá STA vrstva)
-  \item eLTER integrácia (DEIMS-SDR, EnvThes, LogIn)
-  \item Federácia medzi inštanciami, FAIR compliance
+  \item Prepísanie TSM komponentov bez závislosti na~upstream
+  \item Napojenie na~služby infraštruktúry eLTER
+  \item Rozšírenie záťažových testov a~pilotné nasadenie na~ďalších pracoviskách
 \end{itemize}
 \end{frame}
+
+\appendix
 
 %% ====================================================================
 
@@ -465,27 +479,36 @@ Celkovo \textbf{11 nedostatkov} $\rightarrow$ definujú rozsah práce.
 
 \makeoutro
 
+%% SLIDE — Súhrn (zobrazený počas otázok)
+\begin{frame}{Čo bolo vytvorené --- prehľad}
+\small
+\begin{itemize}
+  \item \textbf{Water Data Platform} (nová vrstva)
+    \begin{itemize}
+      \item Portál (Next.js~15), dvojúrovňový RBAC, viacjazyčná podpora
+      \item Správa senzorov s~hromadným CSV importom
+      \item Interaktívne mapy (MapLibre + GeoServer WMS vrstvy)
+      \item Systém upozornení (prahy, výpadky, automatické vyhodnocovanie)
+      \item QA/QC konfigurácia cez SaQC, monitorovacia služba
+      \item Výpočtový modul (Python/R), simulátor IoT zariadení
+      \item Konfigurovateľné dashboardy, správa skupín a~používateľov
+    \end{itemize}
+  \item \textbf{TSM adaptácie}
+    \begin{itemize}
+      \item 9~databázových pohľadov (náhrada SMS $\rightarrow$ FROST-Server)
+      \item Opravy parserov, MQTT, SFTP a~žurnálu
+      \item Pohľady pre Grafana bez potreby joinov
+    \end{itemize}
+  \item \textbf{Nasadenie}
+    \begin{itemize}
+      \item \texttt{make up} $\rightarrow$ 22~kontajnerov, automatická správa hesiel
+      \item Podpora rootless Podman, overenie zdravia služieb
+    \end{itemize}
+\end{itemize}
+\end{frame}
+
 %% ====================================================================
 %% ZÁLOŽNÉ SNÍMKY — odpovede na otázky z posudkov
 %% Tieto snímky sa zobrazujú AŽ po prečítaní posudkov.
 %% ====================================================================
-\appendix
-
-\begin{frame}{Odpovede na otázky z~posudkov}
-\centering\Large
-{\itshape Pripravené snímky s~odpoveďami na otázky\\
-vedúceho a~oponenta.}
-
-\vspace{1em}
-{\normalsize\color{gray}
-  Doplniť po obdržaní posudkov.}
-\end{frame}
-
-%% Template for review question slides:
-%% \begin{frame}{Otázka 1 --- Vedúci/Oponent}
-%% \textbf{Otázka:} ...
-%% \vspace{0.5em}
-%% \textbf{Odpoveď:} ...
-%% \end{frame}
-
 \end{document}
