@@ -1,6 +1,6 @@
 ### Snímok 1: Titulný snímok (~15 sec)
 
-> Dobrý deň, vážená komisia, rád by som vám predstavil diplomovú prácu, ktorá sa venuje návrhu a implementácii platformy pre zber a správu dát z environmentálnych senzorov.
+> Dobrý deň, vážená komisia, rád by som vám predstavil svoju diplomovú prácu, ktorá sa venuje návrhu a implementácii platformy pre zber a správu dát z environmentálnych senzorov.
 
 ---
 
@@ -8,7 +8,7 @@
 
 > Environmentálne senzorové siete produkujú nepretržité toky heterogénnych dát. Rôzni výrobcovia, rôzne protokoly, rôzne formáty.
 >
-> Česká zemědělská univerzita v Prahe prevádzkuje monitoring povodí a experimentálnych plôch, ale doteraz nemala jednotnú platformu na správu týchto dát.
+> Česká zemědělská univerzita v Prahe prevádzkuje monitoring povodí, ale doteraz nemala jednotnú platformu na správu týchto dát.
 >
 > Ako východisko bol zvolený open-source systém Time.IO z Helmholtz Centre v Lipsku. 
 >
@@ -28,19 +28,19 @@
 
 ### Snímok 4: Analýza nedostatkov (~1 min 15 sec)
 
-> Nedostatky som rozdelil teda do dvoch skupín. Prvá sú technické problémy v upstream kóde, teda tie červené časti z predchádzajúceho diagramu.
+> Nedostatky som rozdelil do dvoch skupín. Prvá sú technické problémy v upstream kóde, teda tie červené časti z predchádzajúceho diagramu.
 >
-> Okrem nefunkčného SMS backendu a chybných frontendov bol celý systém hardcoded pre UFZ prostredie. Keycloak klienti mali natvrdo zadané UFZ prefixy a mali špecificky nakonfigurované scopes. Obecne chybalo riešenie chýb, workeri padali pri každom neočakavanom inpute a k ničomu z toho neexistovala dokumentácia.
+> Okrem nefunkčného SMS backendu a chybných frontendov bol celý systém hardcoded pre UFZ prostredie. Chybalo riešenie chýb, workeri padali pri každom neočakavanom inpute a k ničomu z toho neexistovala dokumentácia.
 >
-> Upstream TSM tím kontinuálne vyvíjal bez ohľadu na backward kompatibilitu. Mazali staršie verzie a artefakty, teda bolo nutné neustále preberať ich nové zmeny, ktoré obsahovali chyby a často znefukčnili iné časti systemu.
+> Upstream TSM tím kontinuálne vyvíjal bez ohľadu na backward kompatibilitu a externých prispievateľov.
 >
-> Druhá skupina sú chýbajúce funkcie pre ČZU. Neexistoval fungujúci webový portál, projektová správa dát, systém upozornení, jednotné nasadenie, správa senszorov, viacjazyčnosť a iné. Celkovo som indetifikoval jedenásť nedostatkov, ktoré definovali rozsah mojej práce.
+> Druhá skupina sú chýbajúce funkcie pre ČZU. Neexistoval fungujúci webový portál, projektová správa dát, správa senszorov, systém upozornení, jednotné nasadenie, viacjazyčnosť a iné. Celkovo som indetifikoval 11 zásadných nedostatkov, ktoré definovali rozsah mojej práce.
 
 ---
 
 ### Snímok 5: Ciele práce (~30 sec)
 
-> V ramci práce boli zadefinované 4 ciele. Analyzovať Time.IO voči požiadavkám ČZU a eLTER a adadaptovat zdedené koponenty. Navrhnúť a implementovať Water Data Platform, ako aplikačnú vrstvu s projektmi, portálom, upozorneniami a mapami. Implementovať jednotné nasadenie, a nakoniec vyhodnotiť výslednú platformu voči identifikovaným požiadavkám.
+> V ramci práce boli zadefinované 4 ciele. Analyzovať Time.IO voči požiadavkám ČZU a eLTER a adadaptovat zdedené koponenty. Navrhnúť a implementovať Water Data Platform, ako aplikačnú vrstvu. Implementovať jednotné nasadenie, a nakoniec vyhodnotiť výslednú platformu voči identifikovaným požiadavkám.
 
 ---
 
@@ -52,7 +52,7 @@
 >
 > Vľavo v modrej farbe je Water Data Platform. Celá táto vrstva je nová, navrhnutá a implementovaná v rámci tejto práce. Obsahuje FastAPI backend, Next.js frontend, Celery worker pre asynchrónne úlohy a GeoServer pre geospatial vrstvy.
 >
-> Na spodku je zdieľaná dátová vrstva. Teda PostgreSQL databaza s TimescaleDB extension, MinIO pre súbory a Mosquitto MQTT broker ako integračná chrbtica. Senzori posielajú dáta priamo do brokera.
+> Na spodku je zdieľaná dátová vrstva. Teda PostgreSQL databaza s TimescaleDB extension, MinIO pre súbory a Mosquitto MQTT broker ako integračná chrbtica. Senzory posielajú dáta priamo do brokera.
 >
 > Kľúčovým rozhodnutím bolo forknúť tsm-orchestration a udržiavať ho ako samostatnú vrstvu. Vďaka tomu bolo možné vyvíjať vrstvy nezávisle a zároveň preberať updaty z upstreamu.
 
@@ -62,9 +62,9 @@
 
 > Práca má dva hlavné príspevky.
 >
-> Prvým je adaptácia TSM vrstvy. Nahradil som nefunkčné databázové pohľady deviatimi lokálnymi pohľadmi a tým som dostal FROST-Server do funkčného stavu. Celkovo je v kóde 18 označených dočasných riešení okolo natvrdo zadaných UFZ závislostí, pripravených na jednoduchý návrat k pôvodnému stavu, a množstvo menších opráv.
+> Prvým je adaptácia TSM vrstvy. Nahradil som nefunkčné databázové pohľady 9 lokálnymi pohľadmi a tým som dostal FROST-Server do funkčného stavu. Celkovo je v kóde 18 označených dočasných workarounds, pripravených na jednoduchý návrat k pôvodnému stavu, a množstvo menších opráv.
 >
-> Druhým príspevkom je Water Data Platform. Kompletne nová aplikačná vrstva s FastAPI backendom a Next.js 15 portálom. Obsahuje projektovú správu senzorov s dvojúrovňovým RBAC, zjednodušenú správu senzorov ako náhradu nefunkčného SMS z upstreamu, konfiguráciu QA/QC pipeline cez SaQC, systém upozornení, interaktívne mapy,viacjazyčnú podporu a ďalšie.
+> Druhým príspevkom je Water Data Platform. Kompletne nová aplikačná vrstva s FastAPI backendom a Next.js 15 portálom. Obsahuje projektovú správu senzorov s dvojúrovňovým RBAC, zjednodušenú správu senzorov ako náhradu nefunkčného SMS z upstreamu, konfiguráciu QA/QC pipeline cez SaQC, systém upozornení, interaktívne mapy, viacjazyčnú podporu a ďalšie.
 >
 > K tomu patrí aj deployment vrstva, kde je možné jedným príkazom naštartovať celú platformu s automatickou správou hesiel a health-checkom.
 
@@ -73,7 +73,7 @@
 ### Snímok 8: Portál – správa projektov a senzorov (~1 min 30 sec)
 
 > K user facing portalu,...
-> Vľavo je zoznam projektov. Kde každý projekt zobrazuje popis, počet prepojených senzorov a rolu prihláseného používateľa. Projekty sú filtrovateľné podľa Keycloak skupín.
+> Vľavo môžete vidieť zoznam projektov. Kde každý projekt zobrazuje popis, počet prepojených senzorov a rolu prihláseného používateľa. Projekty sú filtrovateľné podľa Keycloak skupín.
 >
 > Vpravo je detail konkrétneho senzoru s vizualizáciou časovej rady. Grafy sú interaktívne, podporujú zoom, výber časového rozsahu a prepínanie medzi datastreams. Dáta sa načítavajú cez React Query s cachingom.
 >
@@ -85,25 +85,25 @@
 
 > Ďalšou kľúčovou funkciou sú interaktívne mapy. Senzory sú zobrazené ako farebné markery na CARTO basemape. Po kliknutí na senzor sa zobrazí popup s aktuálnymi hodnotami, tu je to napríklad vodná hladina a teplota.
 >
-> Vďaka GeoServeru je možné prekryť WMS vrstvy, napríklad hranice povodí alebo geologické mapy. Vrstvy sa dajú zapnúť a vypnúť v layer selectore vľavo hore. Celé je postavené na MapLibre s 30 sekundovým auto-refreshom.
+> Vďaka GeoServeru je možné prekryť WMS vrstvy, napríklad hranice povodí alebo geologické mapy. Vrstvy sa dajú zapnúť a vypnúť v layer selectore vľavo hore.
 
 ---
 
 ### Snímok 10: Správa senzorov a QA/QC (~1 min)
 
-> Vľavo vidíte rozhranie pre správu senzorov. Toto je zjednodušená náhrada nefunkčného upstream SMS. Operátor tu definuje senzory, ich parsery a konfiguráciu priamo cez portál, bez potreby manuálne editovať MQTT správy.
+> Vľavo vidíte rozhranie pre správu senzorov. Toto je zjednodušená náhrada nefunkčného upstream sensor management systemu. Operátor tu definuje senzory, ich parsery a konfiguráciu priamo cez portál.
 >
-> Vpravo je konfigurácia QA/QC pipeline. Platforma integruje SaQC framework, kde si používateľ nakonfiguruje kontrolné pravidlá pre každý datastream. Po uložení sa pravidlá automaticky aplikujú na prichádzajúce dáta.
+> Vpravo je konfigurácia QA/QC pipeline. Užívateľ si môže nakonfigurovať kontrolné pravidlá pre každý datastream.
 
 ---
 
 ### Snímok 11: Testovanie a validácia (~1 min 30 sec)
 
-> Teraz k validácii. Vytvorených bolo 804 testov pre backend, pokrývajúcich API endpointy, služby, RBAC a alerty. Frontend má 96 testov cez Vitest. Z upstreamu som zdedil 131 testov, ktoré všetky prechádzajú aj napriek násobným zmenám v kóde. Celkovo vyše tisíc automatizovaných testov.
+> Vytvorených bolo 804 testov pre backend, pokrývajúcich API endpointy, služby, RBAC a alerty. Frontend má 96 testov cez Vitest. Z upstreamu som zdedil 131 testov, ktoré všetky prechádzajú aj napriek zásadným zmenám v kóde. Celkovo vyše tisíc automatizovaných testov.
 >
-> Z  funkčných požiadaviek bolo 23 splnených úplne. Jedna, správa Keycloak skupín cez portál, bola len čiastočne splnená. Používatelia zahlasili že to chcú riešiť priamo cez Keycloak.
+> Z  funkčných požiadaviek bolo 23 splnených úplne. Správa Keycloak skupín cez portál, bola splnená len čiastočne. Užívatelia chceli využívať priamo Keycloak.
 >
-> Záťažové testy cez Locust potvrdili odozvu pod 310 milisekúnd na 95. percentile pri 25 súbežných používateľoch a 150 simulovaných senzoroch. Platforma je nasadená na cloud.muni.cz a ČZU ju niekoľko mesiacov testovala v malom rozsahu s reálnymi senzormi. Na základe tejto testovacej prevádzky sa nedávno rozhodli pre plnú integráciu svojej senzorovej infraštruktúry do platformy.
+> Záťažové testy cez Locust potvrdili rýchlu odozvu pri 25 súbežných používateľoch a 150 simulovaných senzoroch. Platforma je nasadená na cloud.muni.cz a ČZU ju niekoľko týždňov testovala v malom rozsahu s reálnymi senzormi. Na základe tejto testovacej prevádzky sa nedávno rozhodli pre plnú integráciu svojej senzorovej infraštruktúry do platformy.
 
 ---
 
