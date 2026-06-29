@@ -480,7 +480,7 @@ automatická správa hesiel, overenie zdravia služieb}
 \makeoutro
 
 %% SLIDE — Súhrn (zobrazený počas otázok)
-\begin{frame}{Čo bolo vytvorené --- prehľad}
+\begin{frame}{Čo bolo vytvorené - prehľad}
 \small
 \begin{itemize}
   \item \textbf{Water Data Platform} (nová vrstva)
@@ -505,6 +505,48 @@ automatická správa hesiel, overenie zdravia služieb}
       \item Podpora rootless Podman, overenie zdravia služieb
     \end{itemize}
 \end{itemize}
+\end{frame}
+
+%% SLIDE — Detail senzoru a správa vrstiev
+\begin{frame}{Detail senzoru a~správa vrstiev}
+\begin{columns}[T]
+  \begin{column}{0.48\textwidth}
+    \includegraphics[width=\textwidth]{sensor-detail-extended.png}
+    \centerline{\footnotesize Senzor detail}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \includegraphics[width=\textwidth]{layers.png}
+    \centerline{\footnotesize Správa GeoServer vrstiev}
+  \end{column}
+\end{columns}
+\end{frame}
+
+%% SLIDE — Simulátor IoT zariadení
+\begin{frame}{Simulátor IoT zariadení}
+\begin{figure}
+  \includegraphics[width=0.85\textwidth,height=0.72\textheight,keepaspectratio]{simulations.png}
+\end{figure}
+\vspace{-0.5em}
+{\footnotesize Vytváranie simulovaných senzorov pre testovanie platformy.
+  Konfigurovateľné dátové toky (sinus, náhodné), automatické generovanie dát.}
+\end{frame}
+
+%% SLIDE — 11 nedostatkov (zobrazený počas otázok)
+\begin{frame}{Identifikovaných 11 nedostatkov}
+\small
+\begin{enumerate}
+  \item Žiadny projektový dátový model
+  \item Žiadny webový portál pre používateľov
+  \item Žiadna správa geospatial vrstiev
+  \item Nefunkčné STA pohľady (FROST-Server nefunkčný)
+  \item Nefunkčný SMS backend
+  \item Žiadny systém upozornení
+  \item Žiadne jednotné nasadenie
+  \item Žiadna podpora rootless Podman
+  \item Žiadna viacjazyčná podpora
+  \item Chybné upstream frontendy (nevalidné MQTT správy)
+  \item Natvrdo zadané parsery a~typy zariadení
+\end{enumerate}
 \end{frame}
 
 %% ====================================================================
